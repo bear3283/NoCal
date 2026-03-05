@@ -113,7 +113,7 @@ final class AppViewModel {
         case .allNotes:
             base = allNotes
         case .favorites:
-            base = allNotes.filter { $0.isPinned }
+            base = allNotes.filter { $0.isFavorite }
         case .folder(let folder):
             base = allNotes.filter { $0.folder?.id == folder.id }
         case .tag(let tag):

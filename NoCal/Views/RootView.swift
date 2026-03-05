@@ -8,11 +8,18 @@ struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var appViewModel = AppViewModel()
     @State private var showTemplates = false
+    @State private var showOnboarding = !UserDefaults.standard.bool(forKey: "didCompletedOnboarding")
 
     var body: some View {
         adaptiveLayout
             .environment(appViewModel)
             .tint(Color.noCalAccent)
+            .sheet(isPresented: $showOnboarding) {
+                OnboardingView()
+                    #if os(macOS)
+                    .frame(width: 480, height: 520)
+                    #endif
+            }
             .onAppear {
                 appViewModel.navigateToToday(context: modelContext)
                 seedBuiltInTemplates()

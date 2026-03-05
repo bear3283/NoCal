@@ -109,6 +109,24 @@ final class MarkdownRenderer {
                     .font: MdFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
                 ], range: markerRange)
 
+            } else if line.hasPrefix("- ") && !line.hasPrefix("- [ ]") && !line.lowercased().hasPrefix("- [x]") {
+                // 일반 불릿 목록
+                storage.addAttributes([.paragraphStyle: bulletParagraph()], range: lineRange)
+                let markerRange = NSRange(location: location, length: min(2, lineLen))
+                storage.addAttributes([.foregroundColor: MdColor.mdTag], range: markerRange)
+
+            } else if line.range(of: #"^\d+\. "#, options: .regularExpression) != nil {
+                // 번호 목록
+                storage.addAttributes([.paragraphStyle: bulletParagraph()], range: lineRange)
+                if let r = line.range(of: #"^\d+\."#, options: .regularExpression) {
+                    let markerLen = line.distance(from: line.startIndex, to: r.upperBound)
+                    let markerRange = NSRange(location: location, length: markerLen)
+                    storage.addAttributes([
+                        .foregroundColor: MdColor.mdTag,
+                        .font: MdFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
+                    ], range: markerRange)
+                }
+
             } else if line.hasPrefix("> ") {
                 // Block quote ─ italic + secondary
                 storage.addAttributes([
@@ -215,6 +233,14 @@ final class MarkdownRenderer {
         p.headIndent    = 16
         p.firstLineHeadIndent = 16
         p.lineSpacing   = 4
+        return p
+    }
+
+    private func bulletParagraph() -> NSParagraphStyle {
+        let p = NSMutableParagraphStyle()
+        p.headIndent          = 16
+        p.firstLineHeadIndent = 4
+        p.lineSpacing         = 3
         return p
     }
 

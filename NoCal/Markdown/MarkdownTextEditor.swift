@@ -85,35 +85,37 @@ struct MarkdownTextEditor: UIViewRepresentable {
             let lineRange = nsText.lineRange(for: NSRange(location: range.location, length: 0))
             let line      = nsText.substring(with: lineRange)
 
-            // Unchecked checkbox → new unchecked item
-            if line.hasPrefix("- [ ] ") || line == "- [ ]\n" {
-                let content = String(line.dropFirst(6)).trimmingCharacters(in: .newlines)
-                let insert  = content.isEmpty ? "" : "\n- [ ] "
-                tv.replace(tv.textRange(
-                    from: tv.position(from: tv.beginningOfDocument, offset: range.location)!,
-                    to:   tv.position(from: tv.beginningOfDocument, offset: range.location)!
-                )!, withText: insert.isEmpty ? "\n" : insert)
-                if !insert.isEmpty {
-                    parent.text = tv.text
-                    applyMarkdown(to: tv)
-                    return false
-                }
-                return true
+            // helper: insert text at cursor
+            func insertAtCursor(_ ins: String) -> Bool {
+                guard let from = tv.position(from: tv.beginningOfDocument, offset: range.location),
+                      let textRange = tv.textRange(from: from, to: from) else { return true }
+                tv.replace(textRange, withText: ins)
+                parent.text = tv.text
+                applyMarkdown(to: tv)
+                return false
             }
 
-            // Bullet → new bullet
+            // Unchecked checkbox
+            if line.hasPrefix("- [ ] ") || line == "- [ ]\n" {
+                let content = String(line.dropFirst(6)).trimmingCharacters(in: .newlines)
+                return insertAtCursor(content.isEmpty ? "\n" : "\n- [ ] ")
+            }
+
+            // Bullet
             if line.hasPrefix("- ") && !line.hasPrefix("- [") {
                 let content = String(line.dropFirst(2)).trimmingCharacters(in: .newlines)
                 if !content.isEmpty {
-                    let ins = "\n- "
-                    tv.replace(tv.textRange(
-                        from: tv.position(from: tv.beginningOfDocument, offset: range.location)!,
-                        to:   tv.position(from: tv.beginningOfDocument, offset: range.location)!
-                    )!, withText: ins)
-                    parent.text = tv.text
-                    applyMarkdown(to: tv)
-                    return false
+                    return insertAtCursor("\n- ")
                 }
+            }
+
+            // Numbered list
+            if let r = line.range(of: #"^(\d+)\. "#, options: .regularExpression) {
+                let numStr  = String(line[r]).trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+                let num     = (Int(numStr) ?? 0) + 1
+                let content = String(line.dropFirst(line.distance(from: line.startIndex, to: r.upperBound)))
+                    .trimmingCharacters(in: .newlines)
+                return insertAtCursor(content.isEmpty ? "\n" : "\n\(num). ")
             }
 
             return true
@@ -259,30 +261,59 @@ struct MarkdownTextEditor: NSViewRepresentable {
 
         // ── Smart continuation ─────────────────────────────────────────────
         func textView(_ tv: NSTextView, doCommandBy selector: Selector) -> Bool {
-            guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
-
             let nsText    = tv.string as NSString
             guard let selRange = tv.selectedRanges.first as? NSRange else { return false }
+
+            // Tab → 2-space indent
+            if selector == #selector(NSResponder.insertTab(_:)) {
+                tv.insertText("  ", replacementRange: selRange)
+                parent.text = tv.string
+                return true
+            }
+
+            guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
+
             let lineRange = nsText.lineRange(for: NSRange(location: selRange.location, length: 0))
             let line      = nsText.substring(with: lineRange)
 
             if line.hasPrefix("- [ ] ") || line == "- [ ]\n" {
                 let content = String(line.dropFirst(6)).trimmingCharacters(in: .newlines)
-                if !content.isEmpty {
+                if content.isEmpty {
+                    // 빈 항목 → 목록 종료
+                    tv.insertText("\n", replacementRange: selRange)
+                } else {
                     tv.insertText("\n- [ ] ", replacementRange: selRange)
-                    parent.text = tv.string
-                    applyMarkdown(to: tv)
-                    return true
                 }
+                parent.text = tv.string
+                applyMarkdown(to: tv)
+                return true
             }
             if line.hasPrefix("- ") && !line.hasPrefix("- [") {
                 let content = String(line.dropFirst(2)).trimmingCharacters(in: .newlines)
-                if !content.isEmpty {
+                if content.isEmpty {
+                    // 빈 항목 → 목록 종료
+                    tv.insertText("\n", replacementRange: selRange)
+                } else {
                     tv.insertText("\n- ", replacementRange: selRange)
-                    parent.text = tv.string
-                    applyMarkdown(to: tv)
-                    return true
                 }
+                parent.text = tv.string
+                applyMarkdown(to: tv)
+                return true
+            }
+            // 번호 목록 자동 계속
+            if let range = line.range(of: #"^(\d+)\. "#, options: .regularExpression) {
+                let numStr  = String(line[range]).trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+                let num     = (Int(numStr) ?? 0) + 1
+                let content = String(line.dropFirst(line.distance(from: line.startIndex, to: range.upperBound)))
+                    .trimmingCharacters(in: .newlines)
+                if content.isEmpty {
+                    tv.insertText("\n", replacementRange: selRange)
+                } else {
+                    tv.insertText("\n\(num). ", replacementRange: selRange)
+                }
+                parent.text = tv.string
+                applyMarkdown(to: tv)
+                return true
             }
             return false
         }

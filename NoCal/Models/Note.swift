@@ -9,6 +9,7 @@ final class Note {
     var createdAt: Date
     var modifiedAt: Date
     var isPinned: Bool
+    var isFavorite: Bool
     var isDaily: Bool
     var dailyDate: Date?
     var tags: [String]
@@ -31,6 +32,7 @@ final class Note {
         self.createdAt = Date()
         self.modifiedAt = Date()
         self.isPinned = false
+        self.isFavorite = false
         self.tags = []
         self.folder = folder
     }
