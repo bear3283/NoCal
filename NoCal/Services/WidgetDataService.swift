@@ -12,7 +12,7 @@ struct WidgetDataService {
 
     static let shared = WidgetDataService()
 
-    private let appGroupID = "group.com.bear3745.NoCal"
+    private let appGroupID = "group.com.bear3745.nocal"
 
     private var defaults: UserDefaults? {
         UserDefaults(suiteName: appGroupID)

@@ -17,7 +17,9 @@ struct NoteEditorView: View {
     @State private var content:       String = ""
     @State private var loadedID:      UUID?
     @State private var saveTask:      Task<Void, Never>?
-    @State private var showTemplates: Bool   = false
+    @State private var showTemplates:    Bool   = false
+    @State private var parsedEvents:     [ParsedEvent] = []
+    @State private var showEventBanner:  Bool   = false
 
     var note: Note? { appViewModel.selectedNote }
 
@@ -82,6 +84,11 @@ struct NoteEditorView: View {
             )
             .onChange(of: content) { _, _ in scheduleSave() }
 
+            // ── Event Banner ────────────────────────────────────────────
+            if showEventBanner && !parsedEvents.isEmpty {
+                eventBanner
+            }
+
             // ── Toolbar ─────────────────────────────────────────────────
             markdownToolbar
         }
@@ -145,29 +152,53 @@ struct NoteEditorView: View {
     private var markdownToolbar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
-                ForEach(MarkdownAction.allCases) { action in
-                    Button { insert(action.snippet) } label: {
-                        VStack(spacing: 2) {
-                            Image(systemName: action.icon)
-                                .font(.system(size: 14, weight: .regular))
-                            Text(action.label)
-                                .font(.system(size: 9))
-                        }
-                        .frame(width: 46, height: 46)
-                        .foregroundStyle(.secondary)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                // Group 1: Inline formatting
+                toolbarButton(.bold)
+                toolbarButton(.italic)
+                toolbarDivider()
 
-                    if action == .italic {
-                        Divider().frame(height: 20).padding(.horizontal, 2)
-                    }
-                }
+                // Group 2: Headings
+                toolbarButton(.h1)
+                toolbarButton(.h2)
+                toolbarButton(.h3)
+                toolbarDivider()
+
+                // Group 3: Lists
+                toolbarButton(.checkbox)
+                toolbarButton(.bullet)
+                toolbarButton(.numbered)
+                toolbarButton(.quote)
+                toolbarDivider()
+
+                // Group 4: Code
+                toolbarButton(.inlineCode)
+                toolbarButton(.codeBlock)
+                toolbarDivider()
+
+                // Group 5: Extras
+                toolbarButton(.divider)
             }
             .padding(.horizontal, NoCalTheme.spacing8)
         }
-        .frame(height: 50)
+        .frame(height: 48)
         .background(.ultraThinMaterial)
+    }
+
+    private func toolbarButton(_ action: MarkdownAction) -> some View {
+        Button { insert(action.snippet) } label: {
+            Image(systemName: action.icon)
+                .font(.system(size: 15, weight: .regular))
+                .frame(width: 40, height: 40)
+                .foregroundStyle(.secondary)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toolbarDivider() -> some View {
+        Divider()
+            .frame(height: 20)
+            .padding(.horizontal, 4)
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -188,6 +219,15 @@ struct NoteEditorView: View {
             }
             .help("타임라인 보기 토글 (⌥⌘T)")
             .keyboardShortcut("t", modifiers: [.command, .option])
+
+            // Favorite toggle
+            Button {
+                if let note { note.isFavorite.toggle(); saveNote() }
+            } label: {
+                Image(systemName: note?.isFavorite == true ? "bookmark.fill" : "bookmark")
+                    .foregroundStyle(note?.isFavorite == true ? Color.yellow : .secondary)
+            }
+            .help("즐겨찾기 토글")
 
             // Pin note
             Button {
@@ -215,6 +255,13 @@ struct NoteEditorView: View {
                 }
 
                 Button {
+                    if let note { note.isFavorite.toggle(); saveNote() }
+                } label: {
+                    Label(note?.isFavorite == true ? "즐겨찾기 해제" : "즐겨찾기",
+                          systemImage: note?.isFavorite == true ? "bookmark.fill" : "bookmark")
+                }
+
+                Button {
                     if let note { note.isPinned.toggle(); saveNote() }
                 } label: {
                     Label(note?.isPinned == true ? "고정 해제" : "고정",
@@ -233,6 +280,72 @@ struct NoteEditorView: View {
             }
         }
         #endif
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: Event Banner
+    // ─────────────────────────────────────────────────────────────────────
+    private var eventBanner: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "calendar.badge.plus")
+                    .foregroundStyle(Color.noCalAccent)
+                Text("감지된 일정/미리알림")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.noCalAccent)
+                Spacer()
+                Button {
+                    showEventBanner = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            ForEach(parsedEvents) { ev in
+                HStack(spacing: 8) {
+                    Image(systemName: ev.type == .calendar ? "calendar" : "bell")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                    Text(ev.title)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                    Text(ev.date.formatted(date: .abbreviated, time: ev.hasTime ? .shortened : .omitted))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Button("추가") {
+                        addEventToCalendar(ev)
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.noCalAccent)
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color.noCalAccent.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, NoCalTheme.spacing16)
+        .padding(.bottom, 4)
+    }
+
+    private func addEventToCalendar(_ event: ParsedEvent) {
+        let service = EventKitService.shared
+        do {
+            switch event.type {
+            case .calendar:
+                try service.createEvent(title: event.title, start: event.date)
+            case .reminder:
+                try service.createReminder(title: event.title, dueDate: event.date)
+            }
+            parsedEvents.removeAll { $0.id == event.id }
+            if parsedEvents.isEmpty { showEventBanner = false }
+        } catch {
+            // 권한 없음 — 배너 유지
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -300,6 +413,12 @@ struct NoteEditorView: View {
         WidgetDataService.shared.syncTodos(from: allNotes.filter {
             Calendar.current.isDateInToday($0.modifiedAt)
         })
+        // 이벤트 패턴 파싱
+        let detected = EventParserService.shared.parse(from: content)
+        if !detected.isEmpty {
+            parsedEvents = detected
+            showEventBanner = true
+        }
     }
 }
 

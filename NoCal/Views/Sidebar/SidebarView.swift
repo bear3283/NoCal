@@ -1,8 +1,10 @@
 /// SidebarView.swift
 /// Phase 2: Added Tags section with #tag filtering.
+/// Phase 5: Fixed date-tap auto-creation, added reminder dots, split pin/favorites badges.
 
 import SwiftUI
 import SwiftData
+import EventKit
 
 struct SidebarView: View {
 
@@ -29,6 +31,14 @@ struct SidebarView: View {
     private var pinnedBadge: String? {
         let c = allNotes.filter(\.isPinned).count
         return c > 0 ? "\(c)" : nil
+    }
+    private var favoritesBadge: String? {
+        let c = allNotes.filter(\.isFavorite).count
+        return c > 0 ? "\(c)" : nil
+    }
+
+    var reminderDates: Set<Date> {
+        Set(EventKitService.shared.incompleteReminders.compactMap { $0.dueDate })
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -70,7 +80,7 @@ struct SidebarView: View {
         Section {
             SidebarRow(icon: "sun.max.fill", label: "오늘",      color: .orange).tag(SidebarItem.today)
             SidebarRow(icon: "note.text",    label: "모든 노트", color: .blue,   badge: allNotesBadge).tag(SidebarItem.allNotes)
-            SidebarRow(icon: "star.fill",    label: "즐겨찾기",  color: .yellow, badge: pinnedBadge).tag(SidebarItem.favorites)
+            SidebarRow(icon: "star.fill",    label: "즐겨찾기",  color: .yellow, badge: favoritesBadge).tag(SidebarItem.favorites)
         } header: { Text("빠른 접근").sidebarHeader() }
     }
 
@@ -127,12 +137,20 @@ struct SidebarView: View {
                     get: { appViewModel.selectedDate },
                     set: { date in
                         appViewModel.selectedDate = date
-                        let note = appViewModel.getOrCreateDailyNote(for: date, context: modelContext)
-                        appViewModel.selectedNote = note
-                        appViewModel.selectedSidebarItem = .today
+                        // 해당 날짜의 daily note가 있으면 선택, 없으면 allNotes로 이동
+                        if let existing = allNotes.first(where: {
+                            $0.isDaily && Calendar.current.isDate(
+                                $0.dailyDate ?? .distantPast, inSameDayAs: date)
+                        }) {
+                            appViewModel.selectedNote = existing
+                            appViewModel.selectedSidebarItem = .today
+                        } else {
+                            appViewModel.selectedSidebarItem = .allNotes
+                        }
                     }
                 ),
-                noteDates: noteDates
+                noteDates: noteDates,
+                reminderDates: reminderDates
             )
             .padding(.vertical, 4)
         } header: { Text("캘린더").sidebarHeader() }

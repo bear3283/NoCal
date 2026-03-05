@@ -3,6 +3,7 @@ import SwiftUI
 struct MiniCalendarView: View {
     @Binding var selectedDate: Date
     var noteDates: Set<Date> = []
+    var reminderDates: Set<Date> = []
 
     @State private var displayMonth: Date = Calendar.current.startOfDay(for: Date())
 
@@ -71,7 +72,8 @@ struct MiniCalendarView: View {
                         date: date,
                         isSelected: calendar.isDate(date, inSameDayAs: selectedDate),
                         isToday: calendar.isDateInToday(date),
-                        hasNote: hasNote(on: date)
+                        hasNote: hasNote(on: date),
+                        hasReminder: hasReminder(on: date)
                     )
                     .onTapGesture { selectedDate = date }
                 } else {
@@ -109,6 +111,10 @@ struct MiniCalendarView: View {
     private func hasNote(on date: Date) -> Bool {
         noteDates.contains { calendar.isDate($0, inSameDayAs: date) }
     }
+
+    private func hasReminder(on date: Date) -> Bool {
+        reminderDates.contains { calendar.isDate($0, inSameDayAs: date) }
+    }
 }
 
 // MARK: - Day Cell
@@ -117,6 +123,7 @@ private struct DayCell: View {
     let isSelected: Bool
     let isToday: Bool
     let hasNote: Bool
+    var hasReminder: Bool = false
 
     private let calendar = Calendar.current
 
@@ -143,11 +150,18 @@ private struct DayCell: View {
                     )
                     .fontWeight(isToday ? .semibold : .regular)
 
-                // Note dot
-                Circle()
-                    .fill(isSelected ? Color.white.opacity(0.7) : Color.noCalAccent)
-                    .frame(width: 4, height: 4)
-                    .opacity(hasNote ? 1 : 0)
+                // Dots row: note dot (indigo) + reminder dot (purple)
+                HStack(spacing: 2) {
+                    Circle()
+                        .fill(isSelected ? Color.white.opacity(0.7) : Color.noCalAccent)
+                        .frame(width: 4, height: 4)
+                        .opacity(hasNote ? 1 : 0)
+
+                    Circle()
+                        .fill(isSelected ? Color.white.opacity(0.7) : Color.purple)
+                        .frame(width: 4, height: 4)
+                        .opacity(hasReminder ? 1 : 0)
+                }
             }
         }
         .frame(height: 32)

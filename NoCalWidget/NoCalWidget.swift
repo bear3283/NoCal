@@ -12,7 +12,7 @@ import EventKit
 // MARK: - App Group
 // ─────────────────────────────────────────────────────────────────────────────
 
-let noCalAppGroup = "group.com.bear3745.NoCal"
+let noCalAppGroup = "group.com.bear3745.nocal"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MARK: - Shared Data Types
