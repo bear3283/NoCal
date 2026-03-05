@@ -102,7 +102,9 @@ struct TemplatePickerView: View {
                 }
             }
             .navigationTitle("템플릿 선택")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") { dismiss() }
@@ -268,7 +270,9 @@ struct TemplateEditorView: View {
                 }
             }
             .navigationTitle(template == nil ? "새 템플릿" : "템플릿 편집")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") { dismiss() }

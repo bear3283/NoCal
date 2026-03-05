@@ -79,6 +79,7 @@ struct RootView: View {
     // MARK: macOS — 3-column layout
     // ─────────────────────────────────────────────────────────────────────
     #if os(macOS)
+    @ViewBuilder
     private var macOSLayout: some View {
         @Bindable var vm = appViewModel
 

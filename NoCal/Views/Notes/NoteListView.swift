@@ -141,7 +141,9 @@ struct NoteListView: View {
                 }
             }
             .navigationTitle("타임라인에 추가")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("취소") { showScheduler = false }
