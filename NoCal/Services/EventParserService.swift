@@ -10,7 +10,7 @@
 import Foundation
 
 // MARK: - ParsedEventType
-enum ParsedEventType {
+enum ParsedEventType: Equatable {
     case calendar
     case reminder
 }
@@ -36,7 +36,18 @@ struct EventParserService {
         var results: [ParsedEvent] = []
         results.append(contentsOf: parseCalendarEvents(from: text))
         results.append(contentsOf: parseReminders(from: text))
-        return results
+        results.append(contentsOf: parseCheckboxCalendarEvents(from: text))
+        results.append(contentsOf: parseCheckboxReminders(from: text))
+        return dedup(results)
+    }
+
+    private func dedup(_ events: [ParsedEvent]) -> [ParsedEvent] {
+        var seen = Set<String>()
+        return events.filter { ev in
+            let typeStr = ev.type == .calendar ? "cal" : "rem"
+            let key = "\(ev.title)_\(typeStr)_\(Int(ev.date.timeIntervalSinceReferenceDate / 86400))"
+            return seen.insert(key).inserted
+        }
     }
 
     // MARK: - Calendar Pattern: @YYYY-MM-DD [HH:mm] 제목
@@ -120,6 +131,71 @@ struct EventParserService {
             }
         }
 
+        return reminders
+    }
+
+    // MARK: - Checkbox Calendar Pattern: - [ ] @YYYY-MM-DD [HH:mm] 제목
+    private func parseCheckboxCalendarEvents(from text: String) -> [ParsedEvent] {
+        let withTimePattern = #"- \[ \] @(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+(.+)"#
+        let dateOnlyPattern = #"- \[ \] @(\d{4}-\d{2}-\d{2})\s+([^@!\d].+)"#
+
+        var events: [ParsedEvent] = []
+
+        if let regex = try? NSRegularExpression(pattern: withTimePattern) {
+            let nsText = text as NSString
+            for m in regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
+                guard m.numberOfRanges == 4,
+                      let dateRange  = Range(m.range(at: 1), in: text),
+                      let timeRange  = Range(m.range(at: 2), in: text),
+                      let titleRange = Range(m.range(at: 3), in: text)
+                else { continue }
+                let title = String(text[titleRange]).trimmingCharacters(in: .whitespaces)
+                if let date = parseDateTime(date: String(text[dateRange]), time: String(text[timeRange])) {
+                    var ev = ParsedEvent(title: title, date: date, type: .calendar)
+                    ev.hasTime = true
+                    events.append(ev)
+                }
+            }
+        }
+
+        if let regex = try? NSRegularExpression(pattern: dateOnlyPattern) {
+            let nsText = text as NSString
+            for m in regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
+                guard m.numberOfRanges == 3,
+                      let dateRange  = Range(m.range(at: 1), in: text),
+                      let titleRange = Range(m.range(at: 2), in: text)
+                else { continue }
+                let title = String(text[titleRange]).trimmingCharacters(in: .whitespaces)
+                if !title.hasPrefix(":"),
+                   let date = parseDate(String(text[dateRange])),
+                   !events.contains(where: { $0.title == title }) {
+                    events.append(ParsedEvent(title: title, date: date, type: .calendar))
+                }
+            }
+        }
+        return events
+    }
+
+    // MARK: - Checkbox Reminder Pattern: - [ ] !YYYY-MM-DD 제목 / - [ ] due: YYYY-MM-DD 제목
+    private func parseCheckboxReminders(from text: String) -> [ParsedEvent] {
+        let exclamationPattern = #"- \[ \] !(\d{4}-\d{2}-\d{2})\s+(.+)"#
+        let duePattern         = #"- \[ \] (?i)due:\s*(\d{4}-\d{2}-\d{2})\s+(.+)"#
+
+        var reminders: [ParsedEvent] = []
+        for pattern in [exclamationPattern, duePattern] {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let nsText = text as NSString
+            for m in regex.matches(in: text, range: NSRange(location: 0, length: nsText.length)) {
+                guard m.numberOfRanges == 3,
+                      let dateRange  = Range(m.range(at: 1), in: text),
+                      let titleRange = Range(m.range(at: 2), in: text)
+                else { continue }
+                let title = String(text[titleRange]).trimmingCharacters(in: .whitespaces)
+                if let date = parseDate(String(text[dateRange])) {
+                    reminders.append(ParsedEvent(title: title, date: date, type: .reminder))
+                }
+            }
+        }
         return reminders
     }
 
