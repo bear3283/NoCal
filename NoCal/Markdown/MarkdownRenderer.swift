@@ -17,6 +17,8 @@ private extension UIColor {
     static let mdCodeFg      = UIColor.systemGreen
     static let mdCodeBg      = UIColor.systemGray6
     static let mdHeading     = UIColor.label
+    static let mdHighlight   = UIColor.systemYellow.withAlphaComponent(0.35)
+    static let mdQuoteBg     = UIColor.systemGray6.withAlphaComponent(0.5)
 }
 #else
 import AppKit
@@ -31,6 +33,8 @@ private extension NSColor {
     static let mdCodeFg      = NSColor.systemGreen
     static let mdCodeBg      = NSColor.unemphasizedSelectedContentBackgroundColor
     static let mdHeading     = NSColor.labelColor
+    static let mdHighlight   = NSColor.systemYellow.withAlphaComponent(0.35)
+    static let mdQuoteBg     = NSColor.unemphasizedSelectedContentBackgroundColor.withAlphaComponent(0.6)
 }
 #endif
 
@@ -128,11 +132,12 @@ final class MarkdownRenderer {
                 }
 
             } else if line.hasPrefix("> ") {
-                // Block quote ─ italic + secondary
+                // Block quote ─ italic + secondary + tinted background
                 storage.addAttributes([
                     .foregroundColor: MdColor.mdSecondary,
                     .font: italicFont(size: baseFont.pointSize),
-                    .paragraphStyle: quoteParagraph()
+                    .paragraphStyle: quoteParagraph(),
+                    .backgroundColor: MdColor.mdQuoteBg
                 ], range: lineRange)
 
             } else if line == "---" || line == "___" || line == "***" {
@@ -186,6 +191,13 @@ final class MarkdownRenderer {
             storage.addAttributes([
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue,
                 .foregroundColor:    MdColor.mdSecondary
+            ], range: r)
+        }
+
+        // Highlight ─ ==text==
+        match(#"==(.+?)=="#, in: text) { r in
+            storage.addAttributes([
+                .backgroundColor: MdColor.mdHighlight
             ], range: r)
         }
 

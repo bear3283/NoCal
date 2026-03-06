@@ -155,6 +155,8 @@ struct NoteEditorView: View {
                 // Group 1: Inline formatting
                 toolbarButton(.bold)
                 toolbarButton(.italic)
+                toolbarButton(.strikethrough)
+                toolbarButton(.highlight)
                 toolbarDivider()
 
                 // Group 2: Headings
@@ -163,7 +165,7 @@ struct NoteEditorView: View {
                 toolbarButton(.h3)
                 toolbarDivider()
 
-                // Group 3: Lists
+                // Group 3: Lists & Structure
                 toolbarButton(.checkbox)
                 toolbarButton(.bullet)
                 toolbarButton(.numbered)
@@ -176,7 +178,9 @@ struct NoteEditorView: View {
                 toolbarDivider()
 
                 // Group 5: Extras
+                toolbarButton(.link)
                 toolbarButton(.divider)
+                toolbarButton(.dateInsert)
             }
             .padding(.horizontal, NoCalTheme.spacing8)
         }
@@ -379,14 +383,16 @@ struct NoteEditorView: View {
     }
 
     private func insert(_ snippet: String) {
-        content += snippet
+        NotificationCenter.default.post(name: .noCalInsertSnippet, object: snippet)
     }
 
     private func loadNote() {
         guard let note, note.id != loadedID else { return }
-        title     = note.title
-        content   = note.content
-        loadedID  = note.id
+        title         = note.title
+        content       = note.content
+        loadedID      = note.id
+        parsedEvents  = []
+        showEventBanner = false
     }
 
     private func scheduleSave() {
@@ -413,10 +419,17 @@ struct NoteEditorView: View {
         WidgetDataService.shared.syncTodos(from: allNotes.filter {
             Calendar.current.isDateInToday($0.modifiedAt)
         })
-        // 이벤트 패턴 파싱
+        // 이벤트 패턴 파싱 (중복 제외)
         let detected = EventParserService.shared.parse(from: content)
-        if !detected.isEmpty {
-            parsedEvents = detected
+        let newEvents = detected.filter { new in
+            !parsedEvents.contains {
+                $0.title == new.title &&
+                Calendar.current.isDate($0.date, inSameDayAs: new.date) &&
+                $0.type == new.type
+            }
+        }
+        if !newEvents.isEmpty {
+            parsedEvents.append(contentsOf: newEvents)
             showEventBanner = true
         }
     }
@@ -454,61 +467,78 @@ enum MarkdownTag {
 // ─────────────────────────────────────────────────────────────────────────────
 enum MarkdownAction: String, CaseIterable, Identifiable {
     case h1, h2, h3
-    case bold, italic
+    case bold, italic, strikethrough, highlight
     case checkbox, bullet, numbered
     case quote, inlineCode, codeBlock
-    case divider
+    case link, divider, dateInsert
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .h1:        return "textformat.size.larger"
-        case .h2:        return "textformat.size"
-        case .h3:        return "textformat.size.smaller"
-        case .bold:      return "bold"
-        case .italic:    return "italic"
-        case .checkbox:  return "checkmark.square"
-        case .bullet:    return "list.bullet"
-        case .numbered:  return "list.number"
-        case .quote:     return "text.quote"
-        case .inlineCode:return "chevron.left.forwardslash.chevron.right"
-        case .codeBlock: return "terminal"
-        case .divider:   return "minus"
+        case .h1:           return "textformat.size.larger"
+        case .h2:           return "textformat.size"
+        case .h3:           return "textformat.size.smaller"
+        case .bold:         return "bold"
+        case .italic:       return "italic"
+        case .strikethrough:return "strikethrough"
+        case .highlight:    return "highlighter"
+        case .checkbox:     return "checkmark.square"
+        case .bullet:       return "list.bullet"
+        case .numbered:     return "list.number"
+        case .quote:        return "text.quote"
+        case .inlineCode:   return "chevron.left.forwardslash.chevron.right"
+        case .codeBlock:    return "terminal"
+        case .link:         return "link"
+        case .divider:      return "minus"
+        case .dateInsert:   return "calendar"
         }
     }
 
     var label: String {
         switch self {
-        case .h1:        return "H1"
-        case .h2:        return "H2"
-        case .h3:        return "H3"
-        case .bold:      return "굵게"
-        case .italic:    return "기울임"
-        case .checkbox:  return "할일"
-        case .bullet:    return "목록"
-        case .numbered:  return "번호"
-        case .quote:     return "인용"
-        case .inlineCode:return "코드"
-        case .codeBlock: return "블록"
-        case .divider:   return "구분선"
+        case .h1:           return "H1"
+        case .h2:           return "H2"
+        case .h3:           return "H3"
+        case .bold:         return "굵게"
+        case .italic:       return "기울임"
+        case .strikethrough:return "취소선"
+        case .highlight:    return "형광펜"
+        case .checkbox:     return "할일"
+        case .bullet:       return "목록"
+        case .numbered:     return "번호"
+        case .quote:        return "인용"
+        case .inlineCode:   return "코드"
+        case .codeBlock:    return "블록"
+        case .link:         return "링크"
+        case .divider:      return "구분선"
+        case .dateInsert:   return "날짜"
         }
     }
 
+    /// The raw snippet string sent via NotificationCenter to MarkdownTextEditor.
+    /// Wrap snippets ("****", "__", etc.) are processed by processMarkdownSnippet().
     var snippet: String {
         switch self {
-        case .h1:        return "\n# "
-        case .h2:        return "\n## "
-        case .h3:        return "\n### "
-        case .bold:      return "****"
-        case .italic:    return "__"
-        case .checkbox:  return "\n- [ ] "
-        case .bullet:    return "\n- "
-        case .numbered:  return "\n1. "
-        case .quote:     return "\n> "
-        case .inlineCode:return "``"
-        case .codeBlock: return "\n```\n\n```"
-        case .divider:   return "\n---\n"
+        case .h1:           return "\n# "
+        case .h2:           return "\n## "
+        case .h3:           return "\n### "
+        case .bold:         return "****"
+        case .italic:       return "__"
+        case .strikethrough:return "~~~~"
+        case .highlight:    return "===="
+        case .checkbox:     return "\n- [ ] "
+        case .bullet:       return "\n- "
+        case .numbered:     return "\n1. "
+        case .quote:        return "\n> "
+        case .inlineCode:   return "``"
+        case .codeBlock:    return "\n```\n\n```"
+        case .link:         return "[]()"
+        case .divider:      return "\n---\n"
+        case .dateInsert:
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd"
+            return fmt.string(from: Date())
         }
     }
 }

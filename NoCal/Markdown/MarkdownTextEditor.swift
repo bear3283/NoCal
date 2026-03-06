@@ -1,9 +1,49 @@
 /// MarkdownTextEditor.swift
-/// Phase 2: Cross-platform UIViewRepresentable / NSViewRepresentable
-/// wrapping UITextView / NSTextView with real-time markdown styling.
-/// Supports: live syntax highlighting, checkbox tap-to-toggle, auto-continuation.
+/// Phase 6: Cursor-aware snippet insertion via NotificationCenter.
+/// - NotificationCenter .noCalInsertSnippet → insert at cursor position
+/// - Selection-wrap: bold/italic/etc wraps selected text
+/// - Smart continuation: checkbox, bullet, numbered list auto-continue
+/// - Checkbox tap/click to toggle [ ] ↔ [x]
 
 import SwiftUI
+
+// MARK: - Notification Name
+extension Notification.Name {
+    static let noCalInsertSnippet = Notification.Name("noCalInsertSnippet")
+}
+
+// MARK: - Shared snippet processing
+/// Returns (processedSnippet, cursorOffsetFromInsertionPoint)
+func processMarkdownSnippet(_ snippet: String, selected: String) -> (String, Int) {
+    switch snippet {
+    case "****":
+        if !selected.isEmpty { return ("**\(selected)**", selected.utf16.count + 4) }
+        return ("****", 2)
+    case "__":
+        if !selected.isEmpty { return ("_\(selected)_", selected.utf16.count + 2) }
+        return ("__", 1)
+    case "~~~~":
+        if !selected.isEmpty { return ("~~\(selected)~~", selected.utf16.count + 4) }
+        return ("~~~~", 2)
+    case "====":
+        if !selected.isEmpty { return ("==\(selected)==", selected.utf16.count + 4) }
+        return ("====", 2)
+    case "``":
+        if !selected.isEmpty { return ("`\(selected)`", selected.utf16.count + 2) }
+        return ("``", 1)
+    case "\n```\n\n```":
+        // Cursor lands inside the code block (after opening ``` newline)
+        return ("\n```\n\n```", 5)
+    case "[]()":
+        if !selected.isEmpty {
+            let r = "[\(selected)]()"
+            return (r, selected.utf16.count + 3)  // cursor inside ()
+        }
+        return ("[]()", 1)  // cursor at offset 1 = inside []
+    default:
+        return (snippet, (snippet as NSString).length)
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MARK: - iOS
@@ -28,12 +68,14 @@ struct MarkdownTextEditor: UIViewRepresentable {
         tv.textContainerInset   = UIEdgeInsets(top: 8, left: 4, bottom: 40, right: 4)
         tv.keyboardDismissMode  = .interactive
 
-        // Auto-correct: keep spell check, disable smart quotes/dashes for markdown
         tv.autocorrectionType               = .yes
         tv.smartQuotesType                  = .no
         tv.smartDashesType                  = .no
 
-        // Tap gesture to handle checkbox toggle
+        // Store reference for NotificationCenter-based insertion
+        context.coordinator.textView = tv
+
+        // Tap gesture for checkbox toggle
         let tap = UITapGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handleTap(_:))
@@ -46,6 +88,7 @@ struct MarkdownTextEditor: UIViewRepresentable {
 
     // MARK: Update
     func updateUIView(_ tv: UITextView, context: Context) {
+        context.coordinator.textView = tv
         guard tv.text != text, !context.coordinator.isEditing else { return }
         let sel = tv.selectedRange
         tv.text = text
@@ -65,8 +108,20 @@ struct MarkdownTextEditor: UIViewRepresentable {
         var parent: MarkdownTextEditor
         var isEditing   = false
         var isStyling   = false
+        weak var textView: UITextView?
 
-        init(_ parent: MarkdownTextEditor) { self.parent = parent }
+        init(_ parent: MarkdownTextEditor) {
+            self.parent = parent
+            super.init()
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleInsertSnippet(_:)),
+                name: .noCalInsertSnippet,
+                object: nil
+            )
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
 
         // ── Lifecycle ─────────────────────────────────────────────────────
         func textViewDidBeginEditing(_ tv: UITextView) { isEditing = true }
@@ -74,6 +129,26 @@ struct MarkdownTextEditor: UIViewRepresentable {
 
         func textViewDidChange(_ tv: UITextView) {
             parent.text = tv.text
+            applyMarkdown(to: tv)
+        }
+
+        // ── Snippet insertion (cursor-aware) ───────────────────────────────
+        @objc private func handleInsertSnippet(_ notification: Notification) {
+            guard let snippet = notification.object as? String,
+                  let tv = textView else { return }
+            DispatchQueue.main.async { self.insertAtCursor(snippet, in: tv) }
+        }
+
+        func insertAtCursor(_ snippet: String, in tv: UITextView) {
+            let range = tv.selectedRange
+            let nsText = tv.text as NSString
+            let selectedText = range.length > 0 ? nsText.substring(with: range) : ""
+            let (processed, cursorOffset) = processMarkdownSnippet(snippet, selected: selectedText)
+            let newText = nsText.replacingCharacters(in: range, with: processed)
+            tv.text = newText
+            parent.text = newText
+            let newLoc = min(range.location + cursorOffset, newText.utf16.count)
+            tv.selectedRange = NSRange(location: newLoc, length: 0)
             applyMarkdown(to: tv)
         }
 
@@ -85,7 +160,6 @@ struct MarkdownTextEditor: UIViewRepresentable {
             let lineRange = nsText.lineRange(for: NSRange(location: range.location, length: 0))
             let line      = nsText.substring(with: lineRange)
 
-            // helper: insert text at cursor
             func insertAtCursor(_ ins: String) -> Bool {
                 guard let from = tv.position(from: tv.beginningOfDocument, offset: range.location),
                       let textRange = tv.textRange(from: from, to: from) else { return true }
@@ -131,7 +205,6 @@ struct MarkdownTextEditor: UIViewRepresentable {
             tv.textStorage.beginEditing()
             MarkdownRenderer.shared.style(tv.textStorage, baseFont: parent.baseFont)
             tv.textStorage.endEditing()
-            // Clamp selection
             let length = tv.textStorage.length
             tv.selectedRange = NSRange(
                 location: min(sel.location, length),
@@ -144,7 +217,6 @@ struct MarkdownTextEditor: UIViewRepresentable {
             guard let tv = gesture.view as? UITextView else { return }
             let pt = gesture.location(in: tv)
 
-            // Convert to text container space
             let offset = tv.textContainerInset
             let adjPt  = CGPoint(x: pt.x - offset.left, y: pt.y - offset.top)
 
@@ -181,7 +253,6 @@ struct MarkdownTextEditor: UIViewRepresentable {
             applyMarkdown(to: tv)
         }
 
-        // Allow simultaneous gesture recognition (don't block text taps)
         func gestureRecognizer(
             _ gr: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
@@ -208,7 +279,7 @@ struct MarkdownTextEditor: NSViewRepresentable {
 
         tv.delegate             = context.coordinator
         tv.isEditable           = true
-        tv.isRichText           = false   // we manage attributes ourselves
+        tv.isRichText           = false
         tv.font                 = baseFont
         tv.backgroundColor      = .clear
         tv.drawsBackground      = false
@@ -218,7 +289,8 @@ struct MarkdownTextEditor: NSViewRepresentable {
         tv.isAutomaticSpellingCorrectionEnabled = false
         tv.allowsUndo           = true
 
-        // Click for checkbox toggle
+        context.coordinator.textView = tv
+
         let click = NSClickGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handleClick(_:))
@@ -231,6 +303,7 @@ struct MarkdownTextEditor: NSViewRepresentable {
     // MARK: Update
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let tv = scrollView.documentView as? NSTextView else { return }
+        context.coordinator.textView = tv
         guard tv.string != text, !context.coordinator.isEditing else { return }
         let sel = tv.selectedRanges
         tv.string = text
@@ -246,8 +319,20 @@ struct MarkdownTextEditor: NSViewRepresentable {
         var parent: MarkdownTextEditor
         var isEditing = false
         var isStyling = false
+        weak var textView: NSTextView?
 
-        init(_ parent: MarkdownTextEditor) { self.parent = parent }
+        init(_ parent: MarkdownTextEditor) {
+            self.parent = parent
+            super.init()
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleInsertSnippet(_:)),
+                name: .noCalInsertSnippet,
+                object: nil
+            )
+        }
+
+        deinit { NotificationCenter.default.removeObserver(self) }
 
         // ── Lifecycle ─────────────────────────────────────────────────────
         func textDidBeginEditing(_ n: Notification) { isEditing = true }
@@ -257,6 +342,33 @@ struct MarkdownTextEditor: NSViewRepresentable {
             guard let tv = n.object as? NSTextView else { return }
             parent.text = tv.string
             applyMarkdown(to: tv)
+        }
+
+        // ── Snippet insertion (cursor-aware) ───────────────────────────────
+        @objc private func handleInsertSnippet(_ notification: Notification) {
+            guard let snippet = notification.object as? String,
+                  let tv = textView else { return }
+            DispatchQueue.main.async { self.insertAtCursor(snippet, in: tv) }
+        }
+
+        func insertAtCursor(_ snippet: String, in tv: NSTextView) {
+            let selRange = (tv.selectedRanges.first as? NSRange)
+                ?? NSRange(location: tv.string.utf16.count, length: 0)
+            let nsText = tv.string as NSString
+            let selectedText = selRange.length > 0 ? nsText.substring(with: selRange) : ""
+            let (processed, cursorOffset) = processMarkdownSnippet(snippet, selected: selectedText)
+
+            guard let storage = tv.textStorage else { return }
+            storage.beginEditing()
+            storage.replaceCharacters(in: selRange, with: processed)
+            storage.endEditing()
+
+            parent.text = tv.string
+            let newLoc = min(selRange.location + cursorOffset, tv.string.utf16.count)
+            tv.selectedRanges = [NSRange(location: newLoc, length: 0) as NSValue]
+            applyMarkdown(to: tv)
+            tv.scrollRangeToVisible(NSRange(location: newLoc, length: 0))
+            tv.window?.makeFirstResponder(tv)
         }
 
         // ── Smart continuation ─────────────────────────────────────────────
@@ -279,7 +391,6 @@ struct MarkdownTextEditor: NSViewRepresentable {
             if line.hasPrefix("- [ ] ") || line == "- [ ]\n" {
                 let content = String(line.dropFirst(6)).trimmingCharacters(in: .newlines)
                 if content.isEmpty {
-                    // 빈 항목 → 목록 종료
                     tv.insertText("\n", replacementRange: selRange)
                 } else {
                     tv.insertText("\n- [ ] ", replacementRange: selRange)
@@ -291,7 +402,6 @@ struct MarkdownTextEditor: NSViewRepresentable {
             if line.hasPrefix("- ") && !line.hasPrefix("- [") {
                 let content = String(line.dropFirst(2)).trimmingCharacters(in: .newlines)
                 if content.isEmpty {
-                    // 빈 항목 → 목록 종료
                     tv.insertText("\n", replacementRange: selRange)
                 } else {
                     tv.insertText("\n- ", replacementRange: selRange)
@@ -300,7 +410,6 @@ struct MarkdownTextEditor: NSViewRepresentable {
                 applyMarkdown(to: tv)
                 return true
             }
-            // 번호 목록 자동 계속
             if let range = line.range(of: #"^(\d+)\. "#, options: .regularExpression) {
                 let numStr  = String(line[range]).trimmingCharacters(in: CharacterSet(charactersIn: ". "))
                 let num     = (Int(numStr) ?? 0) + 1
@@ -366,7 +475,7 @@ struct MarkdownTextEditor: NSViewRepresentable {
     }
 }
 
-// macOS: NSFont.preferredFont shim (maps UIKit style to AppKit)
+// macOS: NSFont.preferredFont shim
 private extension NSFont {
     static func preferredFont(forTextStyle style: NSFont.TextStyleShim) -> NSFont {
         return NSFont.systemFont(ofSize: NSFont.systemFontSize)
