@@ -78,9 +78,9 @@ struct SidebarView: View {
 
     @ViewBuilder private var quickAccessSection: some View {
         Section {
-            SidebarRow(icon: "sun.max.fill", label: "오늘",      color: .orange).tag(SidebarItem.today)
-            SidebarRow(icon: "note.text",    label: "모든 노트", color: .blue,   badge: allNotesBadge).tag(SidebarItem.allNotes)
-            SidebarRow(icon: "star.fill",    label: "즐겨찾기",  color: .yellow, badge: favoritesBadge).tag(SidebarItem.favorites)
+            SidebarRow(icon: "sun.max.fill", label: "오늘",      color: .orange, iconBadge: true).tag(SidebarItem.today)
+            SidebarRow(icon: "note.text",    label: "모든 노트", color: .blue,   iconBadge: true, badge: allNotesBadge).tag(SidebarItem.allNotes)
+            SidebarRow(icon: "star.fill",    label: "즐겨찾기",  color: .yellow, iconBadge: true, badge: favoritesBadge).tag(SidebarItem.favorites)
         } header: { Text("빠른 접근").sidebarHeader() }
     }
 
@@ -88,7 +88,7 @@ struct SidebarView: View {
         Section {
             ForEach(folders) { folder in
                 let badge: String? = folder.notes.count > 0 ? "\(folder.notes.count)" : nil
-                SidebarRow(icon: folder.icon, label: folder.name, color: folder.accentColor, badge: badge)
+                SidebarRow(icon: folder.icon, label: folder.name, color: folder.accentColor, iconBadge: true, badge: badge)
                     .tag(SidebarItem.folder(folder))
                     .contextMenu {
                         Button(role: .destructive) {
@@ -121,7 +121,7 @@ struct SidebarView: View {
                 HStack {
                     Text("태그").sidebarHeader()
                     Spacer()
-                    Button { withAnimation(.spring(response: 0.3)) { expandedTags.toggle() } } label: {
+                    Button { withAnimation(NoCalTheme.springFast) { expandedTags.toggle() } } label: {
                         Image(systemName: expandedTags ? "chevron.down" : "chevron.right")
                             .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     }.buttonStyle(.plain)
@@ -204,31 +204,49 @@ struct SidebarView: View {
 // MARK: - SidebarRow
 // ─────────────────────────────────────────────────────────────────────────────
 struct SidebarRow: View {
-    let icon:   String
-    let label:  String
-    let color:  Color
-    var badge:  String? = nil
+    let icon:      String
+    let label:     String
+    let color:     Color
+    var iconBadge: Bool    = false   // iOS Notes style: colored rounded-rect background
+    var badge:     String? = nil
 
     var body: some View {
-        HStack(spacing: NoCalTheme.spacing8) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .frame(width: NoCalTheme.iconMD)
-
+        HStack(spacing: NoCalTheme.sp8) {
+            iconView
             Text(label)
                 .font(.body)
                 .lineLimit(1)
-
-            Spacer()
-
+            Spacer(minLength: 0)
             if let badge {
                 Text(badge)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(.secondary.opacity(0.15), in: Capsule())
+                    .background(.secondary.opacity(0.12), in: Capsule())
             }
+        }
+    }
+
+    @ViewBuilder
+    private var iconView: some View {
+        if iconBadge {
+            ZStack {
+                RoundedRectangle(cornerRadius: NoCalTheme.sidebarIconBadgeRadius)
+                    .fill(color)
+                    .frame(
+                        width:  NoCalTheme.sidebarIconBadgeSize,
+                        height: NoCalTheme.sidebarIconBadgeSize
+                    )
+                Image(systemName: icon)
+                    .font(.system(size: NoCalTheme.sidebarIconBadgeFont, weight: .medium))
+                    .foregroundStyle(.white)
+            }
+        } else {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .font(.system(size: NoCalTheme.iconMD))
+                .frame(width: NoCalTheme.sidebarIconBadgeSize)
         }
     }
 }
