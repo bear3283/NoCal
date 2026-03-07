@@ -12,6 +12,11 @@ struct NoteEditorView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppViewModel.self)  private var appViewModel
 
+    // Settings (wired to GeneralSettingsTab)
+    @AppStorage("editorFontSize") private var editorFontSize: Double = 15
+    @AppStorage("autoSaveDelay")  private var autoSaveDelay:  Double = 0.8
+    @AppStorage("showWordCount")  private var showWordCount:   Bool   = true
+
     // Local edit state
     @State private var title:         String = ""
     @State private var content:       String = ""
@@ -135,11 +140,13 @@ struct NoteEditorView: View {
                 }
 
                 // Char count
-                Spacer()
-                Text("\(content.count) 자")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .padding(.trailing, NoCalTheme.spacing20)
+                if showWordCount {
+                    Spacer()
+                    Text("\(content.count) 자")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .padding(.trailing, NoCalTheme.spacing20)
+                }
             }
             .padding(.leading, NoCalTheme.spacing20)
             .padding(.vertical, NoCalTheme.spacing4)
@@ -376,9 +383,9 @@ struct NoteEditorView: View {
     // ─────────────────────────────────────────────────────────────────────
     private var editorBaseFont: PlatformFont {
         #if os(iOS)
-        return UIFont.preferredFont(forTextStyle: .body)
+        return UIFont.systemFont(ofSize: editorFontSize)
         #else
-        return NSFont.systemFont(ofSize: 15)
+        return NSFont.systemFont(ofSize: editorFontSize)
         #endif
     }
 
@@ -398,7 +405,7 @@ struct NoteEditorView: View {
     private func scheduleSave() {
         saveTask?.cancel()
         saveTask = Task {
-            try? await Task.sleep(for: .milliseconds(800))
+            try? await Task.sleep(for: .milliseconds(Int(autoSaveDelay * 1000)))
             guard !Task.isCancelled else { return }
             await MainActor.run { saveNote() }
         }

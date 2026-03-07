@@ -131,10 +131,25 @@ struct NoCalCommands: Commands {
             }
             .keyboardShortcut("i", modifiers: .command)
 
-            Button("코드") {
-                NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.inlineCode)
+            Button("취소선") {
+                NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.strikethrough)
+            }
+            .keyboardShortcut("u", modifiers: [.command, .shift])
+
+            Button("형광펜") {
+                NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.highlight)
+            }
+            .keyboardShortcut("h", modifiers: [.command, .shift])
+
+            Button("링크") {
+                NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.link)
             }
             .keyboardShortcut("k", modifiers: .command)
+
+            Button("인라인 코드") {
+                NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.inlineCode)
+            }
+            .keyboardShortcut("k", modifiers: [.command, .option])
 
             Divider()
 
@@ -164,6 +179,11 @@ struct NoCalCommands: Commands {
                 NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.bullet)
             }
             .keyboardShortcut("8", modifiers: [.command, .shift])
+
+            Button("번호 목록") {
+                NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.numbered)
+            }
+            .keyboardShortcut("7", modifiers: [.command, .shift])
 
             Button("인용구") {
                 NotificationCenter.default.post(name: .noCalFormat, object: MarkdownAction.quote)
@@ -353,7 +373,7 @@ private struct AboutSettingsTab: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Text("버전 1.0.0 (Phase 4)")
+            Text("버전 1.0.0")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
