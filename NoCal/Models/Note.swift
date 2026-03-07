@@ -56,17 +56,6 @@ final class Note {
         return String(stripped.prefix(120))
     }
 
-    var extractedTags: [String] {
-        let pattern = #"#(\w+)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let range = NSRange(content.startIndex..., in: content)
-        let matches = regex.matches(in: content, range: range)
-        return matches.compactMap {
-            guard let range = Range($0.range(at: 1), in: content) else { return nil }
-            return String(content[range])
-        }
-    }
-
     var relativeDate: String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
