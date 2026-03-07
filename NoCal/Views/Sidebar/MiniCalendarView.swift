@@ -129,37 +129,37 @@ private struct DayCell: View {
 
     var body: some View {
         ZStack {
-            // Selected background
+            // Selected: solid circle; Today (unselected): subtle fill
             if isSelected {
                 Circle()
                     .fill(Color.noCalAccent)
                     .padding(1)
             } else if isToday {
                 Circle()
-                    .fill(Color.noCalAccent.opacity(0.15))
+                    .fill(Color.noCalAccent.opacity(0.12))
                     .padding(1)
             }
 
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 Text("\(calendar.component(.day, from: date))")
                     .font(.calendarDay)
+                    .fontWeight(isToday && !isSelected ? .bold : .regular)
                     .foregroundStyle(
-                        isSelected ? .white :
-                        isToday ? Color.noCalAccent :
-                        .primary
+                        isSelected          ? Color.white :
+                        isToday             ? Color.noCalAccent :
+                        /* default */         Color.primary
                     )
-                    .fontWeight(isToday ? .semibold : .regular)
 
-                // Dots row: note dot (indigo) + reminder dot (purple)
+                // Indicator dots: note (accent) + reminder (teal)
                 HStack(spacing: 2) {
                     Circle()
-                        .fill(isSelected ? Color.white.opacity(0.7) : Color.noCalAccent)
-                        .frame(width: 4, height: 4)
+                        .fill(isSelected ? Color.white.opacity(0.8) : Color.noCalAccent)
+                        .frame(width: 3.5, height: 3.5)
                         .opacity(hasNote ? 1 : 0)
 
                     Circle()
-                        .fill(isSelected ? Color.white.opacity(0.7) : Color.purple)
-                        .frame(width: 4, height: 4)
+                        .fill(isSelected ? Color.white.opacity(0.8) : Color.noCalReminder)
+                        .frame(width: 3.5, height: 3.5)
                         .opacity(hasReminder ? 1 : 0)
                 }
             }

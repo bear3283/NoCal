@@ -221,7 +221,7 @@ struct NoteEditorView: View {
         ToolbarItemGroup(placement: .primaryAction) {
             // Timeline toggle
             Button {
-                withAnimation(.spring(response: 0.3)) {
+                withAnimation(NoCalTheme.springFast) {
                     appViewModel.showTimeline.toggle()
                 }
             } label: {
@@ -319,7 +319,7 @@ struct NoteEditorView: View {
                 HStack(spacing: 8) {
                     Image(systemName: ev.type == .calendar ? "calendar" : "bell")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ev.type == .calendar ? Color.noCalEvent : Color.noCalReminder)
                         .frame(width: 16)
                     Text(ev.title)
                         .font(.caption)

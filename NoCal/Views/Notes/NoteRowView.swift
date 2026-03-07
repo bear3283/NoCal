@@ -1,13 +1,12 @@
 /// NoteRowView.swift
-/// Phase 3: Added .draggable(note.id.uuidString) for macOS timeline drop,
-/// and "타임라인 추가" swipe action for iOS.
+/// Phase 6 Design: Improved typography, spacing, and visual hierarchy.
 
 import SwiftUI
 
 struct NoteRowView: View {
 
     let note: Note
-    var onSchedule: ((Note) -> Void)? = nil   // iOS: schedule callback
+    var onSchedule: ((Note) -> Void)? = nil
 
     private var tags: [String] { Array(MarkdownTag.extract(from: note.content).prefix(3)) }
 
@@ -18,84 +17,98 @@ struct NoteRowView: View {
         return (done, total)
     }
 
-    // ─────────────────────────────────────────────────────────────────────
     var body: some View {
         rowContent
-        // macOS / iPad: drag note onto timeline to create a TimedTask
             .draggable(note.id.uuidString)
     }
 
     private var rowContent: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: NoCalTheme.sp6) {
 
-            // ── Title ──────────────────────────────────────────────────
+            // MARK: Title row
             HStack(spacing: 5) {
                 if note.isPinned {
                     Image(systemName: "pin.fill")
-                        .font(.system(size: 9))
+                        .font(.system(size: 9, weight: .semibold))
                         .foregroundStyle(Color.noCalAccent)
                 }
                 Text(note.displayTitle)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.noteListTitle)
                     .lineLimit(1)
-
-                Spacer()
-
+                Spacer(minLength: 0)
                 if note.isDaily {
                     Image(systemName: "calendar")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
+                if note.isFavorite {
+                    Image(systemName: "bookmark.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.yellow)
+                }
             }
 
-            // ── Preview ────────────────────────────────────────────────
+            // MARK: Preview
             if !note.preview.isEmpty {
                 Text(note.preview)
-                    .font(.caption)
+                    .font(.notePreview)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+            } else {
+                Text("내용 없음")
+                    .font(.notePreview)
+                    .foregroundStyle(.quaternary)
+                    .italic()
             }
 
-            // ── Footer ─────────────────────────────────────────────────
+            // MARK: Footer
             HStack(spacing: 6) {
                 Text(note.relativeDate)
-                    .font(.caption2)
+                    .font(.metaLabel)
                     .foregroundStyle(.tertiary)
 
-                // Checkbox progress
                 let (done, total) = checkboxProgress
                 if total > 0 {
-                    HStack(spacing: 3) {
-                        Image(systemName: done == total ? "checkmark.circle.fill" : "circle.dotted")
-                            .font(.system(size: 9))
-                            .foregroundStyle(done == total ? Color.green : Color.noCalAccent)
-                        Text("\(done)/\(total)")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(Color.noCalAccent)
-                    }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color.noCalAccent.opacity(0.08), in: Capsule())
+                    checkboxPill(done: done, total: total)
                 }
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                // Tags
                 if !tags.isEmpty {
-                    HStack(spacing: 3) {
-                        ForEach(tags, id: \.self) { tag in
-                            Text("#\(tag)")
-                                .font(.system(size: 9))
-                                .foregroundStyle(Color.noCalAccent)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.noCalAccent.opacity(0.08), in: Capsule())
-                        }
-                    }
+                    tagsRow
                 }
             }
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, NoCalTheme.noteRowVerticalPad)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Subviews
+
+    private func checkboxPill(done: Int, total: Int) -> some View {
+        let complete = done == total
+        return HStack(spacing: 3) {
+            Image(systemName: complete ? "checkmark.circle.fill" : "circle.dotted")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(complete ? Color.noCalDone : Color.noCalAccent)
+            Text("\(done)/\(total)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(complete ? Color.noCalDone : Color.noCalAccent)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            (complete ? Color.noCalDone : Color.noCalAccent).opacity(0.09),
+            in: Capsule()
+        )
+    }
+
+    private var tagsRow: some View {
+        HStack(spacing: 3) {
+            ForEach(tags, id: \.self) { tag in
+                Text("#\(tag)")
+                    .noCalTagChip()
+            }
+        }
     }
 }
