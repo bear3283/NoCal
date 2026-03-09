@@ -20,54 +20,66 @@ struct NoteListView: View {
 
     var navigationTitle: String { appViewModel.selectedSidebarItem.title }
 
+    // MARK: - Sectioned notes (Todoist-style grouping)
+    private var cal: Calendar { Calendar.current }
+
+    private var isToday: (Note) -> Bool {
+        { n in n.isDaily && cal.isDateInToday(n.dailyDate ?? .distantPast) }
+    }
+
+    private var pinnedNotes: [Note] {
+        displayedNotes.filter { $0.isPinned }
+    }
+    private var todayNotes: [Note] {
+        displayedNotes.filter { !$0.isPinned && isToday($0) }
+    }
+    private var remainingNotes: [Note] {
+        displayedNotes.filter { !$0.isPinned && !isToday($0) }
+    }
+
+    /// Show sections only when there is something to separate (and no active search)
+    private var useSections: Bool {
+        appViewModel.searchText.isEmpty && (!pinnedNotes.isEmpty || !todayNotes.isEmpty)
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     var body: some View {
         @Bindable var vm = appViewModel
 
-        VStack(spacing: 0) {
-            if !appViewModel.allTagsSorted.isEmpty {
-                tagFilterBar
-                Divider()
-            }
-            if displayedNotes.isEmpty {
-                emptyState
-            } else {
-                List(selection: $vm.selectedNote) {
-                    ForEach(displayedNotes) { note in
-                        NoteRowView(note: note)
-                            .tag(note)
-                            .swipeActions(edge: .leading) {
-                                Button {
-                                    note.isPinned.toggle()
-                                    try? modelContext.save()
-                                } label: {
-                                    Label(
-                                        note.isPinned ? "고정 해제" : "고정",
-                                        systemImage: note.isPinned ? "pin.slash" : "pin"
-                                    )
-                                }
-                                .tint(Color.noCalAccent)
-
-                                // Phase 3: iOS schedule button
-                                Button {
-                                    scheduleNote = note
-                                    scheduleDate = appViewModel.selectedDate
-                                    showScheduler = true
-                                } label: {
-                                    Label("일정 추가", systemImage: "clock.badge.plus")
-                                }
-                                .tint(.orange)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) { deleteNote(note) } label: {
-                                    Label("삭제", systemImage: "trash")
-                                }
-                            }
-                            .contextMenu { contextMenu(for: note) }
-                    }
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                if !appViewModel.allTagsSorted.isEmpty {
+                    tagFilterBar
+                    Divider()
                 }
-                .listStyle(.plain)
+                if displayedNotes.isEmpty {
+                    emptyState
+                } else {
+                    List(selection: $vm.selectedNote) {
+                        if useSections {
+                            sectionedContent
+                        } else {
+                            flatContent(notes: displayedNotes)
+                        }
+                    }
+                    .listStyle(.plain)
+                }
             }
+
+            // MARK: iOS FAB (Todoist-style floating action button)
+            #if os(iOS)
+            Button(action: addNote) {
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(Color.noCalAccent, in: Circle())
+                    .shadow(color: Color.noCalAccent.opacity(0.35), radius: 12, y: 4)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 20)
+            .padding(.bottom, 24)
+            #endif
         }
         .navigationTitle(navigationTitle)
         .searchable(text: $vm.searchText, prompt: "노트 검색")
@@ -76,6 +88,83 @@ struct NoteListView: View {
         .sheet(isPresented: $showScheduler) {
             scheduleSheet
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: List Content
+    // ─────────────────────────────────────────────────────────────────────
+
+    @ViewBuilder
+    private var sectionedContent: some View {
+        if !pinnedNotes.isEmpty {
+            Section {
+                flatContent(notes: pinnedNotes)
+            } header: {
+                noteListSectionHeader("고정됨", icon: "pin.fill", color: .noCalAccent)
+            }
+        }
+        if !todayNotes.isEmpty {
+            Section {
+                flatContent(notes: todayNotes)
+            } header: {
+                noteListSectionHeader("오늘", icon: "sun.max.fill", color: .orange)
+            }
+        }
+        if !remainingNotes.isEmpty {
+            Section {
+                flatContent(notes: remainingNotes)
+            } header: {
+                noteListSectionHeader("노트", icon: "note.text", color: .secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func flatContent(notes: [Note]) -> some View {
+        ForEach(notes) { note in
+            NoteRowView(note: note)
+                .tag(note)
+                .swipeActions(edge: .leading) {
+                    Button {
+                        note.isPinned.toggle()
+                        try? modelContext.save()
+                    } label: {
+                        Label(
+                            note.isPinned ? "고정 해제" : "고정",
+                            systemImage: note.isPinned ? "pin.slash" : "pin"
+                        )
+                    }
+                    .tint(Color.noCalAccent)
+
+                    Button {
+                        scheduleNote = note
+                        scheduleDate = appViewModel.selectedDate
+                        showScheduler = true
+                    } label: {
+                        Label("일정 추가", systemImage: "clock.badge.plus")
+                    }
+                    .tint(.orange)
+                }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) { deleteNote(note) } label: {
+                        Label("삭제", systemImage: "trash")
+                    }
+                }
+                .contextMenu { contextMenu(for: note) }
+        }
+    }
+
+    private func noteListSectionHeader(_ title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(color)
+            Text(title.uppercased())
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .kerning(0.4)
+        }
+        .padding(.top, 2)
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -114,7 +203,7 @@ struct NoteListView: View {
                             .foregroundStyle(selected ? Color.white : Color.primary)
                     }
                     .buttonStyle(.plain)
-                    .animation(.spring(response: 0.25), value: selected)
+                    .animation(NoCalTheme.springFast, value: selected)
                 }
             }
             .padding(.horizontal, 12)

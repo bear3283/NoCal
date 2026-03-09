@@ -37,9 +37,19 @@ struct NoteRowView: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 if note.isDaily {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                    let isToday = Calendar.current.isDateInToday(note.dailyDate ?? .distantPast)
+                    if isToday {
+                        Text("오늘")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.orange, in: Capsule())
+                    } else {
+                        Image(systemName: "calendar")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 if note.isFavorite {
                     Image(systemName: "bookmark.fill")
