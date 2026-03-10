@@ -15,7 +15,8 @@ struct OnboardingView: View {
             iconColor: Color.noCalAccent,
             title: "nocal에 오신 것을 환영합니다",
             subtitle: "노트와 캘린더를 하나의 흐름으로",
-            description: "오늘의 생각, 할일, 일정을 한 곳에서 관리하세요.\nnocal은 마크다운 노트와 캘린더를 자연스럽게 연결합니다."
+            description: "오늘의 생각, 할일, 일정을 한 곳에서 관리하세요.\nnocal은 마크다운 노트와 캘린더를 자연스럽게 연결합니다.",
+            useAppIcon: true
         ),
         OnboardingPage(
             icon: "text.cursor",
@@ -108,10 +109,19 @@ struct OnboardingView: View {
         VStack(spacing: NoCalTheme.spacing20) {
             Spacer()
 
-            Image(systemName: page.icon)
-                .font(.system(size: 72, weight: .light))
-                .foregroundStyle(page.iconColor)
-                .padding(.bottom, NoCalTheme.spacing8)
+            // First page: show actual app icon; other pages: SF symbol
+            Group {
+                if page.useAppIcon {
+                    AppIconView(size: 96)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .shadow(color: Color.noCalAccent.opacity(0.35), radius: 18, y: 8)
+                } else {
+                    Image(systemName: page.icon)
+                        .font(.system(size: 72, weight: .light))
+                        .foregroundStyle(page.iconColor)
+                }
+            }
+            .padding(.bottom, NoCalTheme.spacing8)
 
             VStack(spacing: NoCalTheme.spacing8) {
                 Text(page.title)
@@ -163,6 +173,7 @@ private struct OnboardingPage {
     let title: String
     let subtitle: String
     let description: String
+    var useAppIcon: Bool = false
 }
 
 #Preview {
