@@ -362,9 +362,9 @@ private struct CalendarSettingsTab: View {
 private struct AboutSettingsTab: View {
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "note.text.badge.plus")
-                .font(.system(size: 64))
-                .foregroundStyle(Color.noCalAccent)
+            AppIconView(size: 80)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: Color.noCalAccent.opacity(0.30), radius: 14, y: 6)
 
             Text("nocal")
                 .font(.largeTitle.weight(.bold))
