@@ -25,10 +25,10 @@ struct AppIconView: View {
     private var cardW:      CGFloat { size * 0.650  }
     private var cardH:      CGFloat { size * 0.720  }
 
-    private var symbolW:    CGFloat { size * 0.470  }
+    private var symbolW:    CGFloat { size * 0.500  }
     private var bulletD:    CGFloat { size * 0.050  }  // TODO 불릿 지름
-    private var todayD:     CGFloat { size * 0.120  }  // 오늘 원 지름
-    private var haloD:      CGFloat { size * 0.195  }  // 헤일로 링 지름
+    private var headerH:    CGFloat { size * 0.058  }  // 캘린더 헤더 높이
+    private var ringD:      CGFloat { size * 0.044  }  // 바인딩 링 지름
     private var lineH:      CGFloat { size * 0.026  }  // 라인 높이
 
     // ── Body ─────────────────────────────────────────────────────────────
@@ -108,28 +108,43 @@ struct AppIconView: View {
 
     // ── Symbol ───────────────────────────────────────────────────────────
     private var symbolLayer: some View {
-        VStack(spacing: size * 0.048) {
-            calendarToday
+        VStack(spacing: size * 0.050) {
+            calendarHeader
             dividerLine
             todoLines
         }
         .frame(width: symbolW)
     }
 
-    // MARK: Calendar — 7 dots, center one highlighted as "Today"
-    private var calendarToday: some View {
-        HStack(spacing: 0) {
-            ForEach(0..<7, id: \.self) { col in
-                let isToday = (col == 3)   // 가운데 = 오늘
-                Circle()
-                    .fill(Color.white.opacity(isToday ? 1.0 : 0.30))
-                    .frame(
-                        width:  isToday ? bulletD * 1.30 : bulletD * 0.80,
-                        height: isToday ? bulletD * 1.30 : bulletD * 0.80
-                    )
-                    .frame(maxWidth: .infinity)
+    // MARK: Calendar header — binding rings + header bar (flip-calendar style)
+    private var calendarHeader: some View {
+        ZStack(alignment: .top) {
+            // Header bar (below rings)
+            RoundedRectangle(cornerRadius: size * 0.018, style: .continuous)
+                .fill(Color.white.opacity(0.88))
+                .frame(height: headerH)
+                .padding(.top, ringD * 0.55)   // bar starts below ring center
+
+            // Binding rings row (overlaps top of bar)
+            HStack {
+                bindingRing
+                Spacer()
+                bindingRing
             }
+            .padding(.horizontal, symbolW * 0.10)
         }
+    }
+
+    private var bindingRing: some View {
+        ZStack {
+            // Dark fill — punches through the header bar visually
+            Circle()
+                .fill(Color(hue: 0.675, saturation: 0.88, brightness: 0.34))
+            // White ring stroke
+            Circle()
+                .strokeBorder(Color.white.opacity(0.75), lineWidth: max(1.5, size * 0.007))
+        }
+        .frame(width: ringD, height: ringD)
     }
 
     // MARK: Divider
