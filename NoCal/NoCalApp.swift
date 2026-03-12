@@ -242,6 +242,14 @@ extension Notification.Name {
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct NoCalSettingsView: View {
+    @AppStorage("calendarTabDismissed") private var calendarTabDismissed = false
+    private var eventKit = EventKitService.shared
+
+    /// 두 권한이 모두 허용되거나 사용자가 "나중에 설정"을 누르면 탭 숨김
+    private var showCalendarTab: Bool {
+        !calendarTabDismissed && !(eventKit.hasCalendarAccess && eventKit.hasRemindersAccess)
+    }
+
     var body: some View {
         TabView {
             GeneralSettingsTab()
@@ -250,8 +258,10 @@ struct NoCalSettingsView: View {
             CloudSyncSettingsTab()
                 .tabItem { Label("동기화", systemImage: "icloud") }
 
-            CalendarSettingsTab()
-                .tabItem { Label("캘린더", systemImage: "calendar") }
+            if showCalendarTab {
+                CalendarSettingsTab(onDismiss: { calendarTabDismissed = true })
+                    .tabItem { Label("캘린더", systemImage: "calendar") }
+            }
 
             AboutSettingsTab()
                 .tabItem { Label("정보", systemImage: "info.circle") }
@@ -320,42 +330,69 @@ private struct CloudSyncSettingsTab: View {
 }
 
 private struct CalendarSettingsTab: View {
+    let onDismiss: () -> Void
+    private var s = EventKitService.shared
+
     var body: some View {
         Form {
             Section("EventKit 권한") {
-                LabeledContent("캘린더 권한") {
-                    let s = EventKitService.shared
-                    HStack {
-                        Text(s.hasCalendarAccess ? "허용됨" : "미허용")
-                            .foregroundStyle(s.hasCalendarAccess ? .green : .secondary)
-                        if !s.hasCalendarAccess {
-                            Button("허용") {
-                                Task { await s.requestCalendarAccess() }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
-                    }
+                permissionRow(
+                    label: "캘린더",
+                    granted: s.hasCalendarAccess,
+                    denied: s.calendarStatus == .denied,
+                    onRequest: { Task { await s.requestCalendarAccess() } },
+                    systemSettingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
+                )
+                permissionRow(
+                    label: "미리알림",
+                    granted: s.hasRemindersAccess,
+                    denied: s.remindersStatus == .denied,
+                    onRequest: { Task { await s.requestRemindersAccess() } },
+                    systemSettingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"
+                )
+            }
+
+            Section {
+                Button("나중에 설정") {
+                    onDismiss()
                 }
-                LabeledContent("미리알림 권한") {
-                    let s = EventKitService.shared
-                    HStack {
-                        Text(s.hasRemindersAccess ? "허용됨" : "미허용")
-                            .foregroundStyle(s.hasRemindersAccess ? .green : .secondary)
-                        if !s.hasRemindersAccess {
-                            Button("허용") {
-                                Task { await s.requestRemindersAccess() }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.small)
-                        }
-                    }
-                }
+                .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
         .padding()
         .frame(minHeight: 200)
+    }
+
+    @ViewBuilder
+    private func permissionRow(
+        label: String,
+        granted: Bool,
+        denied: Bool,
+        onRequest: @escaping () -> Void,
+        systemSettingsURL: String
+    ) -> some View {
+        LabeledContent("\(label) 권한") {
+            HStack {
+                Text(granted ? "허용됨" : "미허용")
+                    .foregroundStyle(granted ? .green : .secondary)
+                if !granted {
+                    if denied {
+                        Button("시스템 설정에서 허용") {
+                            if let url = URL(string: systemSettingsURL) {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    } else {
+                        Button("허용") { onRequest() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                    }
+                }
+            }
+        }
     }
 }
 
