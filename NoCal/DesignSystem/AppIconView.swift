@@ -116,20 +116,20 @@ struct AppIconView: View {
         .frame(width: symbolW)
     }
 
-    // MARK: Calendar — single "Today" circle + halo
+    // MARK: Calendar — 7 dots, center one highlighted as "Today"
     private var calendarToday: some View {
-        ZStack {
-            // Outer halo ring
-            Circle()
-                .strokeBorder(Color.white.opacity(0.28), lineWidth: max(1, size * 0.007))
-                .frame(width: haloD, height: haloD)
-
-            // Today filled circle
-            Circle()
-                .fill(Color.white)
-                .frame(width: todayD, height: todayD)
+        HStack(spacing: 0) {
+            ForEach(0..<7, id: \.self) { col in
+                let isToday = (col == 3)   // 가운데 = 오늘
+                Circle()
+                    .fill(Color.white.opacity(isToday ? 1.0 : 0.30))
+                    .frame(
+                        width:  isToday ? bulletD * 1.30 : bulletD * 0.80,
+                        height: isToday ? bulletD * 1.30 : bulletD * 0.80
+                    )
+                    .frame(maxWidth: .infinity)
+            }
         }
-        .frame(maxWidth: .infinity) // centered
     }
 
     // MARK: Divider
