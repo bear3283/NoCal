@@ -151,17 +151,22 @@ private struct DayCell: View {
                     )
 
                 // Indicator dots: note (accent) + reminder (teal)
-                HStack(spacing: 2) {
-                    Circle()
-                        .fill(isSelected ? Color.white.opacity(0.8) : Color.noCalAccent)
-                        .frame(width: 3.5, height: 3.5)
-                        .opacity(hasNote ? 1 : 0)
-
-                    Circle()
-                        .fill(isSelected ? Color.white.opacity(0.8) : Color.noCalReminder)
-                        .frame(width: 3.5, height: 3.5)
-                        .opacity(hasReminder ? 1 : 0)
+                // ZStack으로 고정 높이를 유지해 숫자 위치가 흔들리지 않도록 함
+                ZStack {
+                    HStack(spacing: 2) {
+                        if hasNote {
+                            Circle()
+                                .fill(isSelected ? Color.white.opacity(0.8) : Color.noCalAccent)
+                                .frame(width: 3.5, height: 3.5)
+                        }
+                        if hasReminder {
+                            Circle()
+                                .fill(isSelected ? Color.white.opacity(0.8) : Color.noCalReminder)
+                                .frame(width: 3.5, height: 3.5)
+                        }
+                    }
                 }
+                .frame(height: 4)
             }
         }
         .frame(height: 32)

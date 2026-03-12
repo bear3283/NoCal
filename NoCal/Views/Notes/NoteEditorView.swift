@@ -25,6 +25,7 @@ struct NoteEditorView: View {
     @State private var showTemplates:    Bool   = false
     @State private var parsedEvents:     [ParsedEvent] = []
     @State private var showEventBanner:  Bool   = false
+    @State private var dateLinkEvent:    DateLinkItem? = nil
 
     var note: Note? { appViewModel.selectedNote }
 
@@ -59,6 +60,37 @@ struct NoteEditorView: View {
                 scheduleSave()
             }
         }
+        // Date-link tap → pre-filled event/reminder sheet
+        .onReceive(NotificationCenter.default.publisher(for: .noCalOpenDateLink)) { notif in
+            guard let info = notif.object as? [String: String],
+                  let line = info["line"],
+                  let typeStr = info["type"] else { return }
+            dateLinkEvent = parseDateLink(line: line, type: typeStr)
+        }
+        .sheet(item: $dateLinkEvent, onDismiss: {
+            // 시트를 닫으면서 해당 링크를 등록 완료로 기록
+            if let item = dateLinkEvent, let note {
+                let fmt = DateFormatter()
+                fmt.locale   = Locale(identifier: "en_US_POSIX")
+                fmt.timeZone = TimeZone.current
+                let hasTime = Calendar.current.component(.hour, from: item.date) != 0
+                    || Calendar.current.component(.minute, from: item.date) != 0
+                fmt.dateFormat = hasTime ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd"
+                let prefix = item.itemType == .reminder ? "!" : "@"
+                let key = "\(prefix)\(fmt.string(from: item.date))"
+                if !note.registeredDateLinks.contains(key) {
+                    note.registeredDateLinks.append(key)
+                    try? modelContext.save()
+                }
+                dateLinkEvent = nil
+            }
+        }) { item in
+            NewEventSheet(
+                presetDate:      item.date,
+                defaultItemType: item.itemType,
+                presetTitle:     item.title
+            )
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -85,7 +117,13 @@ struct NoteEditorView: View {
             // ── Markdown editor ─────────────────────────────────────────
             MarkdownTextEditor(
                 text: $content,
-                baseFont: editorBaseFont
+                baseFont: editorBaseFont,
+                onDateLinkTap: { line, type in
+                    // "registered" 마커는 이미 추가된 링크 — 중복 방지
+                    guard type != "registered" else { return }
+                    dateLinkEvent = parseDateLink(line: line, type: type)
+                },
+                registeredLinks: Set(note?.registeredDateLinks ?? [])
             )
             .onChange(of: content) { _, _ in scheduleSave() }
 
@@ -197,13 +235,37 @@ struct NoteEditorView: View {
 
     private func toolbarButton(_ action: MarkdownAction) -> some View {
         Button { insert(action.snippet) } label: {
-            Image(systemName: action.icon)
-                .font(.system(size: 15, weight: .regular))
-                .frame(width: 40, height: 40)
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
+            Group {
+                switch action {
+                case .h1, .h2, .h3:
+                    headingLabel(for: action)
+                default:
+                    Image(systemName: action.icon)
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        #if os(macOS)
+        .help(action.helpText)
+        #endif
+    }
+
+    private func headingLabel(for action: MarkdownAction) -> some View {
+        let level = action == .h1 ? "1" : action == .h2 ? "2" : "3"
+        return ZStack(alignment: .topTrailing) {
+            Text("A")
+                .font(.system(size: 17, weight: .semibold, design: .serif))
+                .foregroundStyle(.secondary)
+                .padding(.trailing, 6)
+                .padding(.top, 5)
+            Text(level)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func toolbarDivider() -> some View {
@@ -443,6 +505,30 @@ struct NoteEditorView: View {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MARK: - Date-link Support
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Passed as `.sheet(item:)` binding when user taps a date link in the editor.
+private struct DateLinkItem: Identifiable {
+    let id       = UUID()
+    let title:    String
+    let date:     Date
+    let itemType: NewEventSheet.ItemType
+}
+
+extension NoteEditorView {
+    /// EventParserService에 파싱을 위임 — 중복 구현 제거
+    fileprivate func parseDateLink(line: String, type typeStr: String) -> DateLinkItem? {
+        guard let parsed = EventParserService.shared.parseLine(line, type: typeStr) else { return nil }
+        return DateLinkItem(
+            title:    parsed.title,
+            date:     parsed.date,
+            itemType: parsed.type == .reminder ? .reminder : .event
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MARK: - Platform Font Alias
 // ─────────────────────────────────────────────────────────────────────────────
 #if os(iOS)
@@ -523,6 +609,31 @@ enum MarkdownAction: String, CaseIterable, Identifiable {
         }
     }
 
+    /// Tooltip text shown on hover (macOS). Includes shortcut hint if available.
+    var helpText: String {
+        let shortcut: String? = {
+            switch self {
+            case .bold:         return "⌘B"
+            case .italic:       return "⌘I"
+            case .strikethrough:return "⇧⌘U"
+            case .highlight:    return "⇧⌘H"
+            case .link:         return "⌘K"
+            case .inlineCode:   return "⌥⌘K"
+            case .h1:           return "⇧⌘1"
+            case .h2:           return "⇧⌘2"
+            case .h3:           return "⇧⌘3"
+            case .checkbox:     return "⇧⌘L"
+            case .bullet:       return "⇧⌘8"
+            case .numbered:     return "⇧⌘7"
+            case .quote:        return "⌘'"
+            case .divider:      return "⇧⌘-"
+            default:            return nil
+            }
+        }()
+        if let shortcut { return "\(label)  \(shortcut)" }
+        return label
+    }
+
     /// The raw snippet string sent via NotificationCenter to MarkdownTextEditor.
     /// Wrap snippets ("****", "__", etc.) are processed by processMarkdownSnippet().
     var snippet: String {
@@ -543,9 +654,12 @@ enum MarkdownAction: String, CaseIterable, Identifiable {
         case .link:         return "[]()"
         case .divider:      return "\n---\n"
         case .dateInsert:
+            // @날짜 형식으로 삽입 → 탭 시 일정 생성 링크로 동작
             let fmt = DateFormatter()
+            fmt.locale     = Locale(identifier: "en_US_POSIX")
+            fmt.timeZone   = TimeZone.current
             fmt.dateFormat = "yyyy-MM-dd"
-            return fmt.string(from: Date())
+            return "@\(fmt.string(from: Date())) "
         }
     }
 }

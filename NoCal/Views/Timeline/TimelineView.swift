@@ -48,6 +48,10 @@ struct TimelineView: View {
     @State private var currentTime  = Date()
     @State private var dropTargetHour: Int? = nil
 
+    // 편집 시트 — EKEvent / EKReminder는 Identifiable이 아니므로 래퍼 사용
+    @State private var editableEvent:    IdentifiableEvent?
+    @State private var editableReminder: IdentifiableReminder?
+
     private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     // Filter TimedTasks for the selected date
@@ -92,6 +96,26 @@ struct TimelineView: View {
                 presetHour: tappedHour,
                 presetDate: appViewModel.selectedDate
             )
+            #if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            #endif
+        }
+        // 일정 편집 시트
+        .sheet(item: $editableEvent, onDismiss: {
+            eventKit.fetchEvents(for: appViewModel.selectedDate)
+        }) { wrapper in
+            EditEventSheet(event: wrapper.event)
+            #if os(iOS)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            #endif
+        }
+        // 미리알림 편집 시트
+        .sheet(item: $editableReminder, onDismiss: {
+            Task { await eventKit.fetchReminders() }
+        }) { wrapper in
+            EditReminderSheet(reminder: wrapper.reminder)
             #if os(iOS)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -192,9 +216,11 @@ struct TimelineView: View {
             content: {
                 VStack(spacing: 0) {
                     ForEach(eventKit.incompleteReminders.prefix(5), id: \.calendarItemIdentifier) { reminder in
-                        ReminderRow(reminder: reminder) {
-                            try? eventKit.toggleReminder(reminder)
-                        }
+                        ReminderRow(
+                            reminder: reminder,
+                            onToggle: { try? eventKit.toggleReminder(reminder) },
+                            onEdit:   { editableReminder = IdentifiableReminder(reminder) }
+                        )
                         Divider().padding(.leading, 36)
                     }
                     if eventKit.incompleteReminders.count > 5 {
@@ -245,9 +271,11 @@ struct TimelineView: View {
                     let top  = event.startMinuteOfDay * TL.ppm
                     let h    = max(TL.minBlockH, event.durationMinutes * TL.ppm)
 
-                    EKEventBlock(event: event) {
-                        try? eventKit.deleteEvent(event)
-                    }
+                    EKEventBlock(
+                        event:    event,
+                        onEdit:   { editableEvent = IdentifiableEvent(event) },
+                        onDelete: { try? eventKit.deleteEvent(event) }
+                    )
                     .frame(width: eventW, height: h)
                     .offset(x: TL.timeColW + TL.gap, y: top)
                 }
@@ -393,3 +421,5 @@ struct TimelineView: View {
         }
     }
 }
+
+// IdentifiableEvent / IdentifiableReminder → Views/IdentifiableWrappers.swift

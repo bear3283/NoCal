@@ -12,6 +12,7 @@ import SwiftData
 // ─────────────────────────────────────────────────────────────────────────────
 struct EKEventBlock: View {
     let event: EKEvent
+    var onEdit:   (() -> Void)? = nil
     var onDelete: (() -> Void)? = nil
 
     var body: some View {
@@ -37,6 +38,11 @@ struct EKEventBlock: View {
                 .stroke(event.calendarColor.opacity(0.4), lineWidth: 0.5)
         )
         .contextMenu {
+            if let onEdit {
+                Button(action: onEdit) {
+                    Label("일정 편집", systemImage: "pencil")
+                }
+            }
             if let onDelete {
                 Button(role: .destructive, action: onDelete) {
                     Label("일정 삭제", systemImage: "trash")
@@ -135,9 +141,11 @@ struct TimedTaskBlock: View {
 struct ReminderRow: View {
     let reminder: EKReminder
     var onToggle: () -> Void
+    var onEdit:   (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
+            // 완료 토글 버튼
             Button(action: onToggle) {
                 Image(systemName: reminder.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 16))
@@ -145,6 +153,7 @@ struct ReminderRow: View {
             }
             .buttonStyle(.plain)
 
+            // 제목 + 날짜 (탭 → 편집)
             VStack(alignment: .leading, spacing: 1) {
                 Text(reminder.title ?? "")
                     .font(.subheadline)
@@ -157,8 +166,29 @@ struct ReminderRow: View {
                         .foregroundStyle(reminder.isOverdue ? Color.red : Color.secondary)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { onEdit?() }
+
+            // 편집 버튼 (iOS Reminders 스타일 info 버튼)
+            if let onEdit {
+                Button(action: onEdit) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.noCalAccent.opacity(0.55))
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(.vertical, 3)
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if let onEdit {
+                Button(action: onEdit) {
+                    Label("편집", systemImage: "pencil")
+                }
+                .tint(Color.noCalAccent)
+            }
+        }
     }
 }
 

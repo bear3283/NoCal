@@ -49,7 +49,7 @@ final class AppViewModel {
 
     // ── Layout ────────────────────────────────────────────────────────────
     var columnVisibility: NavigationSplitViewVisibility = .all
-    var showTimeline:       Bool = true
+    var showTimeline:       Bool = false
     var showTimelineSheet:  Bool = false
 
     // ── Search ────────────────────────────────────────────────────────────

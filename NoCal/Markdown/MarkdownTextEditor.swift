@@ -56,6 +56,10 @@ struct MarkdownTextEditor: UIViewRepresentable {
     @Binding var text: String
     var baseFont: UIFont = .preferredFont(forTextStyle: .body)
     var onHeightChange: ((CGFloat) -> Void)? = nil
+    /// 날짜 링크 탭 콜백 — (line: 해당 줄 전체, type: "calendar"|"reminder")
+    var onDateLinkTap: ((String, String) -> Void)? = nil
+    /// 이미 등록된 날짜링크 원문 집합 — dim 처리용
+    var registeredLinks: Set<String> = []
 
     // MARK: Make
     func makeUIView(context: Context) -> UITextView {
@@ -203,7 +207,8 @@ struct MarkdownTextEditor: UIViewRepresentable {
 
             let sel = tv.selectedRange
             tv.textStorage.beginEditing()
-            MarkdownRenderer.shared.style(tv.textStorage, baseFont: parent.baseFont)
+            MarkdownRenderer.shared.style(tv.textStorage, baseFont: parent.baseFont,
+                                          registeredLinks: parent.registeredLinks)
             tv.textStorage.endEditing()
             let length = tv.textStorage.length
             tv.selectedRange = NSRange(
@@ -212,7 +217,7 @@ struct MarkdownTextEditor: UIViewRepresentable {
             )
         }
 
-        // ── Checkbox tap ───────────────────────────────────────────────────
+        // ── Checkbox tap / date-link tap ───────────────────────────────────
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
             guard let tv = gesture.view as? UITextView else { return }
             let pt = gesture.location(in: tv)
@@ -228,10 +233,27 @@ struct MarkdownTextEditor: UIViewRepresentable {
             )
             guard idx < tv.text.count else { return }
 
-            let nsText    = tv.text as NSString
+            let nsText = tv.text as NSString
+
+            // Date-link takes priority over checkbox toggle
+            if let linkType = tv.textStorage.attribute(.noCalDateLink, at: idx, effectiveRange: nil) as? String {
+                let lineRange = nsText.lineRange(for: NSRange(location: idx, length: 0))
+                let line = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
+                guard linkType != "registered" else { return }
+                if let cb = parent.onDateLinkTap {
+                    // 콜백 우선 (멀티윈도우 안전)
+                    cb(line, linkType)
+                } else {
+                    NotificationCenter.default.post(
+                        name: .noCalOpenDateLink,
+                        object: ["line": line, "type": linkType]
+                    )
+                }
+                return
+            }
+
             let lineRange = nsText.lineRange(for: NSRange(location: idx, length: 0))
             let line      = nsText.substring(with: lineRange)
-
             toggleCheckbox(line: line, lineRange: lineRange, in: tv)
         }
 
@@ -271,11 +293,28 @@ struct MarkdownTextEditor: NSViewRepresentable {
     @Binding var text: String
     var baseFont: NSFont = .preferredFont(forTextStyle: .body)
     var onHeightChange: ((CGFloat) -> Void)? = nil
+    /// 날짜 링크 클릭 콜백 — (line: 해당 줄 전체, type: "calendar"|"reminder")
+    var onDateLinkTap: ((String, String) -> Void)? = nil
+    /// 이미 등록된 날짜링크 원문 집합 — dim 처리용
+    var registeredLinks: Set<String> = []
 
     // MARK: Make
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        guard let tv = scrollView.documentView as? NSTextView else { return scrollView }
+        // NoCalTextView를 직접 생성 (NSTextView.scrollableTextView()는 기본 NSTextView 반환)
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller   = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers    = true
+
+        let tv = NoCalTextView()
+        tv.minSize          = NSSize(width: 0, height: scrollView.contentSize.height)
+        tv.maxSize          = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.isVerticallyResizable   = true
+        tv.isHorizontallyResizable = false
+        tv.autoresizingMask        = [.width]
+        tv.textContainer?.containerSize = NSSize(width: scrollView.contentSize.width,
+                                                 height: CGFloat.greatestFiniteMagnitude)
+        tv.textContainer?.widthTracksTextView = true
 
         tv.delegate             = context.coordinator
         tv.isEditable           = true
@@ -289,12 +328,14 @@ struct MarkdownTextEditor: NSViewRepresentable {
         tv.isAutomaticSpellingCorrectionEnabled = false
         tv.allowsUndo           = true
 
+        scrollView.documentView = tv
         context.coordinator.textView = tv
 
         let click = NSClickGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handleClick(_:))
         )
+        click.delaysPrimaryMouseButtonEvents = false
         tv.addGestureRecognizer(click)
 
         return scrollView
@@ -435,12 +476,13 @@ struct MarkdownTextEditor: NSViewRepresentable {
 
             let sel = tv.selectedRanges
             storage.beginEditing()
-            MarkdownRenderer.shared.style(storage, baseFont: parent.baseFont)
+            MarkdownRenderer.shared.style(storage, baseFont: parent.baseFont,
+                                          registeredLinks: parent.registeredLinks)
             storage.endEditing()
             tv.selectedRanges = sel
         }
 
-        // ── Checkbox click ─────────────────────────────────────────────────
+        // ── Checkbox click / date-link click ──────────────────────────────
         @objc func handleClick(_ gesture: NSClickGestureRecognizer) {
             guard let tv = gesture.view as? NSTextView,
                   let lm = tv.layoutManager,
@@ -451,11 +493,28 @@ struct MarkdownTextEditor: NSViewRepresentable {
             let adjPt   = NSPoint(x: pt.x - inset.width, y: pt.y - inset.height)
             let idx     = lm.characterIndex(for: adjPt, in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
 
-            let nsText    = tv.string as NSString
+            let nsText = tv.string as NSString
             guard idx < nsText.length else { return }
+
+            // Date-link takes priority over checkbox toggle
+            if let linkType = tv.textStorage?.attribute(.noCalDateLink, at: idx, effectiveRange: nil) as? String {
+                let lineRange = nsText.lineRange(for: NSRange(location: idx, length: 0))
+                let line = nsText.substring(with: lineRange).trimmingCharacters(in: .newlines)
+                guard linkType != "registered" else { return }
+                if let cb = parent.onDateLinkTap {
+                    // 콜백 우선 (멀티윈도우 안전)
+                    cb(line, linkType)
+                } else {
+                    NotificationCenter.default.post(
+                        name: .noCalOpenDateLink,
+                        object: ["line": line, "type": linkType]
+                    )
+                }
+                return
+            }
+
             let lineRange = nsText.lineRange(for: NSRange(location: idx, length: 0))
             let line      = nsText.substring(with: lineRange)
-
             toggleCheckbox(line: line, lineRange: lineRange, in: tv)
         }
 
@@ -472,6 +531,40 @@ struct MarkdownTextEditor: NSViewRepresentable {
             parent.text = tv.string
             applyMarkdown(to: tv)
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARK: - NoCalTextView: 날짜 링크 위 커서 포인팅 핸드 처리
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// NSTextView 서브클래스 — 날짜 링크(.noCalDateLink) 위에서 커서를 손 모양으로 변경.
+private final class NoCalTextView: NSTextView {
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        let opts: NSTrackingArea.Options = [.mouseMoved, .activeInKeyWindow, .inVisibleRect]
+        addTrackingArea(NSTrackingArea(rect: bounds, options: opts, owner: self, userInfo: nil))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard let lm = layoutManager, let tc = textContainer else { super.mouseMoved(with: event); return }
+        let pt    = convert(event.locationInWindow, from: nil)
+        let inset = textContainerInset
+        let adj   = NSPoint(x: pt.x - inset.width, y: pt.y - inset.height)
+        let idx   = lm.characterIndex(for: adj, in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
+        if idx < (textStorage?.length ?? 0),
+           textStorage?.attribute(.noCalDateLink, at: idx, effectiveRange: nil) != nil {
+            NSCursor.pointingHand.set()
+        } else {
+            NSCursor.iBeam.set()
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        NSCursor.iBeam.set()
+        super.mouseExited(with: event)
     }
 }
 

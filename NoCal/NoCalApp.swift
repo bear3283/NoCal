@@ -26,23 +26,18 @@ struct NoCalApp: App {
             Note.self,
             Folder.self,
             TimedTask.self,
-            NoteTemplate.self,   // Phase 4
+            NoteTemplate.self,
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
             return try ModelContainer(for: schema, configurations: [config])
         } catch {
-            // 스키마 변경으로 인한 기존 스토어 불일치 → 스토어 삭제 후 재생성
-            // ⚠️ 개발 전용: 프로덕션에서는 SchemaMigrationPlan으로 마이그레이션 구현 필요
-            print("⚠️ SwiftData 스키마 불일치, 스토어 재초기화: \(error)")
-            let storeURL = config.url
-            let walURL   = storeURL.appendingPathExtension("wal")
-            let shmURL   = storeURL.appendingPathExtension("shm")
-            [storeURL, walURL, shmURL].forEach { try? FileManager.default.removeItem(at: $0) }
+            // 명시적 config 실패 시 기본 설정으로 재시도 (데이터 보존)
+            print("⚠️ ModelContainer 초기화 실패, 재시도: \(error)")
             do {
-                return try ModelContainer(for: schema, configurations: [config])
+                return try ModelContainer(for: schema)
             } catch {
-                fatalError("ModelContainer 생성 최종 실패: \(error)")
+                fatalError("ModelContainer 복구 실패: \(error)")
             }
         }
     }()
@@ -236,6 +231,10 @@ extension Notification.Name {
     static let noCalTogglePin      = Notification.Name("noCalTogglePin")
     static let noCalDeleteNote     = Notification.Name("noCalDeleteNote")
     static let noCalShowTemplates  = Notification.Name("noCalShowTemplates")
+    /// 노트 텍스트의 날짜/시간 링크 클릭 → object: 해당 줄 전체 String
+    static let noCalOpenDateLink   = Notification.Name("noCalOpenDateLink")
+    /// 일정 또는 미리알림이 새로 추가됨 — object: "event" | "reminder"
+    static let noCalItemAdded      = Notification.Name("noCalItemAdded")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,11 +243,10 @@ extension Notification.Name {
 
 struct NoCalSettingsView: View {
     @AppStorage("calendarTabDismissed") private var calendarTabDismissed = false
-    private var eventKit = EventKitService.shared
 
     /// 두 권한이 모두 허용되거나 사용자가 "나중에 설정"을 누르면 탭 숨김
     private var showCalendarTab: Bool {
-        !calendarTabDismissed && !(eventKit.hasCalendarAccess && eventKit.hasRemindersAccess)
+        !calendarTabDismissed && !(EventKitService.shared.hasCalendarAccess && EventKitService.shared.hasRemindersAccess)
     }
 
     var body: some View {
@@ -332,28 +330,22 @@ private struct CloudSyncSettingsTab: View {
 
 struct CalendarSettingsTab: View {
     let onDismiss: () -> Void
-    private var s: EventKitService
-
-    init(onDismiss: @escaping () -> Void) {
-        self.onDismiss = onDismiss
-        self.s = EventKitService.shared
-    }
 
     var body: some View {
         Form {
             Section("EventKit 권한") {
                 permissionRow(
                     label: "캘린더",
-                    granted: s.hasCalendarAccess,
-                    denied: s.calendarStatus == .denied,
-                    onRequest: { Task { await s.requestCalendarAccess() } },
+                    granted: EventKitService.shared.hasCalendarAccess,
+                    denied: EventKitService.shared.calendarStatus == .denied,
+                    onRequest: { Task { await EventKitService.shared.requestCalendarAccess() } },
                     systemSettingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"
                 )
                 permissionRow(
                     label: "미리알림",
-                    granted: s.hasRemindersAccess,
-                    denied: s.remindersStatus == .denied,
-                    onRequest: { Task { await s.requestRemindersAccess() } },
+                    granted: EventKitService.shared.hasRemindersAccess,
+                    denied: EventKitService.shared.remindersStatus == .denied,
+                    onRequest: { Task { await EventKitService.shared.requestRemindersAccess() } },
                     systemSettingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"
                 )
             }

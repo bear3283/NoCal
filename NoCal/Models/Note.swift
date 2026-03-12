@@ -13,6 +13,9 @@ final class Note {
     var isDaily: Bool
     var dailyDate: Date?
     var tags: [String]
+    /// 이미 캘린더/미리알림에 등록된 날짜 링크 원문 (e.g. "@2026-03-15 15:00", "!2026-03-15")
+    /// 중복 등록 방지 및 에디터에서 "이미 추가됨" 스타일 표시에 사용
+    var registeredDateLinks: [String]
 
     @Relationship(deleteRule: .nullify)
     var folder: Folder?
@@ -34,6 +37,7 @@ final class Note {
         self.isPinned = false
         self.isFavorite = false
         self.tags = []
+        self.registeredDateLinks = []
         self.folder = folder
     }
 

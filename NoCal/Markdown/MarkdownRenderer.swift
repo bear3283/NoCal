@@ -4,6 +4,12 @@
 
 import Foundation
 
+// MARK: - Custom Attribute Key
+extension NSAttributedString.Key {
+    /// Value: "calendar" | "reminder" — marks a tappable date-link in the editor.
+    static let noCalDateLink = NSAttributedString.Key("noCalDateLink")
+}
+
 #if os(iOS)
 import UIKit
 typealias MdFont  = UIFont
@@ -19,6 +25,8 @@ private extension UIColor {
     static let mdHeading     = UIColor.label
     static let mdHighlight   = UIColor.systemYellow.withAlphaComponent(0.35)
     static let mdQuoteBg     = UIColor.systemGray6.withAlphaComponent(0.5)
+    static let mdCalLink     = UIColor.systemTeal           // @날짜 → 캘린더 이벤트
+    static let mdRemLink     = UIColor.systemOrange         // !날짜 → 미리알림
 }
 #else
 import AppKit
@@ -35,6 +43,8 @@ private extension NSColor {
     static let mdHeading     = NSColor.labelColor
     static let mdHighlight   = NSColor.systemYellow.withAlphaComponent(0.35)
     static let mdQuoteBg     = NSColor.unemphasizedSelectedContentBackgroundColor.withAlphaComponent(0.6)
+    static let mdCalLink     = NSColor.systemTeal           // @날짜 → 캘린더 이벤트
+    static let mdRemLink     = NSColor.systemOrange         // !날짜 → 미리알림
 }
 #endif
 
@@ -46,7 +56,8 @@ final class MarkdownRenderer {
 
     /// Apply markdown styling to an NSTextStorage in place.
     /// Safe to call from textStorage(_:didProcessEditing:) or textViewDidChange.
-    func style(_ storage: NSTextStorage, baseFont: MdFont) {
+    /// - Parameter registeredLinks: 이미 등록된 날짜링크 원문 집합 — 해당 링크는 dim+체크 스타일 적용
+    func style(_ storage: NSTextStorage, baseFont: MdFont, registeredLinks: Set<String> = []) {
         let text     = storage.string
         let nsText   = text as NSString
         let fullRange = NSRange(location: 0, length: nsText.length)
@@ -67,6 +78,11 @@ final class MarkdownRenderer {
 
         // ── 3. Inline rules ───────────────────────────────────────────────
         applyInlineRules(storage, text: text, baseFont: baseFont)
+
+        // ── 4. 등록 완료 날짜링크 dim 처리 ───────────────────────────────
+        if !registeredLinks.isEmpty {
+            applyRegisteredLinkStyles(storage, text: text, registeredLinks: registeredLinks)
+        }
     }
 
     // MARK: - Line Rules
@@ -209,12 +225,52 @@ final class MarkdownRenderer {
             ], range: r)
         }
 
-        // Mentions ─ @word
-        match(#"(?<!\w)@(\w+)"#, in: text) { r in
+        // Mentions ─ @word (not date links)
+        match(#"(?<!\w)@(?!\d{4}-\d{2}-\d{2})(\w+)"#, in: text) { r in
             storage.addAttributes([
                 .foregroundColor: MdColor.mdMention,
                 .font:            MdFont.systemFont(ofSize: baseFont.pointSize, weight: .medium)
             ], range: r)
+        }
+
+        // Calendar date links ─ @YYYY-MM-DD or @YYYY-MM-DD HH:MM
+        match(#"@\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?"#, in: text) { r in
+            storage.addAttributes([
+                .foregroundColor: MdColor.mdCalLink,
+                .underlineStyle:  NSUnderlineStyle.single.rawValue,
+                .noCalDateLink:   "calendar"
+            ], range: r)
+        }
+
+        // Reminder date links ─ !YYYY-MM-DD or !YYYY-MM-DD HH:MM
+        match(#"!\d{4}-\d{2}-\d{2}(?:\s+\d{1,2}:\d{2})?"#, in: text) { r in
+            storage.addAttributes([
+                .foregroundColor: MdColor.mdRemLink,
+                .underlineStyle:  NSUnderlineStyle.single.rawValue,
+                .noCalDateLink:   "reminder"
+            ], range: r)
+        }
+    }
+
+    // MARK: - Registered Link Styles
+    /// 이미 캘린더/미리알림에 등록된 날짜링크를 dim + ✓ 접두로 표시
+    private func applyRegisteredLinkStyles(
+        _ storage: NSTextStorage, text: String, registeredLinks: Set<String>
+    ) {
+        for link in registeredLinks {
+            // link 원문 그대로 텍스트에서 찾아 스타일 적용
+            let escaped = NSRegularExpression.escapedPattern(for: link)
+            guard let regex = try? NSRegularExpression(pattern: escaped) else { continue }
+            let nsText = text as NSString
+            let range  = NSRange(location: 0, length: nsText.length)
+            for m in regex.matches(in: text, range: range) {
+                storage.addAttributes([
+                    .foregroundColor: MdColor.mdTertiary,
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .strikethroughColor: MdColor.mdTertiary,
+                    .noCalDateLink:      "registered"     // 탭 시 중복 시트 방지용 마커
+                ], range: m.range)
+            }
         }
     }
 

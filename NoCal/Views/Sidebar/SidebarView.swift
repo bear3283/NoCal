@@ -14,8 +14,6 @@ struct SidebarView: View {
     @Query(sort: \Folder.sortOrder) private var folders: [Folder]
     @Query(sort: \Note.modifiedAt, order: .reverse) private var allNotes: [Note]
 
-    private var eventKit = EventKitService.shared
-
     @State private var showAddFolder  = false
     @State private var newFolderName  = ""
     @State private var expandedTags   = true
@@ -40,7 +38,7 @@ struct SidebarView: View {
     }
 
     var reminderDates: Set<Date> {
-        Set(eventKit.incompleteReminders.compactMap { $0.dueDate })
+        Set(EventKitService.shared.incompleteReminders.compactMap { $0.dueDate })
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -134,11 +132,11 @@ struct SidebarView: View {
     }
 
     @ViewBuilder private var remindersSection: some View {
-        let reminders = eventKit.incompleteReminders
-        if eventKit.hasRemindersAccess && !reminders.isEmpty {
+        let reminders = EventKitService.shared.incompleteReminders
+        if EventKitService.shared.hasRemindersAccess && !reminders.isEmpty {
             Section {
                 ForEach(reminders.prefix(8), id: \.calendarItemIdentifier) { reminder in
-                    SidebarReminderRow(reminder: reminder, eventKit: eventKit)
+                    SidebarReminderRow(reminder: reminder)
                 }
                 if reminders.count > 8 {
                     Text("+ \(reminders.count - 8)개 더")
@@ -174,8 +172,8 @@ struct SidebarView: View {
             .padding(.vertical, 4)
 
             // ── 선택한 날의 캘린더 일정 ─────────────────────────────────
-            if eventKit.hasCalendarAccess {
-                let dayEvents = eventKit.todayEvents   // refresh(for:) 로 최신 유지
+            if EventKitService.shared.hasCalendarAccess {
+                let dayEvents = EventKitService.shared.todayEvents
                 if dayEvents.isEmpty {
                     Text("일정 없음")
                         .font(.caption)
@@ -195,9 +193,9 @@ struct SidebarView: View {
             }
         } header: { Text("캘린더").sidebarHeader() }
         .onChange(of: appViewModel.selectedDate) { _, date in
-            Task { await eventKit.refresh(for: date) }
+            Task { await EventKitService.shared.refresh(for: date) }
         }
-        .task { await eventKit.refresh(for: appViewModel.selectedDate) }
+        .task { await EventKitService.shared.refresh(for: appViewModel.selectedDate) }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -282,11 +280,10 @@ private struct SidebarEventRow: View {
 // ─────────────────────────────────────────────────────────────────────────────
 private struct SidebarReminderRow: View {
     let reminder: EKReminder
-    let eventKit: EventKitService
 
     var body: some View {
         Button {
-            try? eventKit.toggleReminder(reminder)
+            try? EventKitService.shared.toggleReminder(reminder)
         } label: {
             HStack(spacing: NoCalTheme.sp8) {
                 Image(systemName: "circle")

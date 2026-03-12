@@ -2,25 +2,40 @@
 /// Phase 3: Sheet for creating a new Calendar event or Reminder from within nocal.
 
 import SwiftUI
+import EventKit
 
 struct NewEventSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     // Preset values passed from timeline tap
-    var presetHour: Int  = 9
-    var presetDate: Date = Date()
+    var presetHour:       Int      = 9
+    var presetDate:       Date     = Date()
+    var defaultItemType:  ItemType = .event
 
     enum ItemType { case event, reminder }
 
-    @State private var title:     String   = ""
-    @State private var itemType:  ItemType = .event
-    @State private var startDate: Date     = Date()
-    @State private var duration:  TimeInterval = 3600
-    @State private var notes:     String   = ""
-    @State private var error:     String?  = nil
-    @State private var isSaving:  Bool     = false
+    @State private var title:    String   = ""
+    @State private var itemType: ItemType
+    @State private var startDate:        Date        = Date()
+    @State private var duration:         TimeInterval = 3600
+    @State private var notes:            String      = ""
+    @State private var selectedCalendar: EKCalendar? = nil
+    @State private var error:            String?     = nil
+    @State private var isSaving:         Bool        = false
+
+    init(presetHour: Int = 9, presetDate: Date = Date(), defaultItemType: ItemType = .event, presetTitle: String = "") {
+        self.presetHour      = presetHour
+        self.presetDate      = presetDate
+        self.defaultItemType = defaultItemType
+        self._itemType       = State(initialValue: defaultItemType)
+        self._title          = State(initialValue: presetTitle)
+    }
 
     private let eventKit = EventKitService.shared
+
+    private var availableCalendars: [EKCalendar] {
+        eventKit.availableCalendars(for: itemType == .event ? .event : .reminder)
+    }
 
     // Duration options
     private let durations: [(String, TimeInterval)] = [
@@ -56,9 +71,7 @@ struct NewEventSheet: View {
                     DatePicker(
                         "시작",
                         selection: $startDate,
-                        displayedComponents: itemType == .event
-                            ? [.date, .hourAndMinute]
-                            : [.date, .hourAndMinute]
+                        displayedComponents: [.date, .hourAndMinute]
                     )
 
                     if itemType == .event {
@@ -75,6 +88,29 @@ struct NewEventSheet: View {
                             Text(endDate.formatted(date: .omitted, time: .shortened))
                                 .foregroundStyle(.secondary)
                         }
+                    }
+                }
+
+                // ── 캘린더 / 목록 선택 ─────────────────────────────────
+                if !availableCalendars.isEmpty {
+                    Section(itemType == .event ? "캘린더" : "목록") {
+                        Picker(
+                            itemType == .event ? "캘린더" : "목록",
+                            selection: $selectedCalendar
+                        ) {
+                            Text("기본").tag(Optional<EKCalendar>.none)
+                            ForEach(availableCalendars, id: \.calendarIdentifier) { cal in
+                                Label {
+                                    Text(cal.title)
+                                } icon: {
+                                    Circle()
+                                        .fill(Color(cgColor: cal.cgColor))
+                                        .frame(width: 10, height: 10)
+                                }
+                                .tag(Optional(cal))
+                            }
+                        }
+                        .pickerStyle(.menu)
                     }
                 }
 
@@ -112,10 +148,18 @@ struct NewEventSheet: View {
     // MARK: Helpers
     // ─────────────────────────────────────────────────────────────────────
     private func configureDefaults() {
-        var comps    = Calendar.current.dateComponents([.year, .month, .day], from: presetDate)
-        comps.hour   = presetHour
-        comps.minute = 0
-        startDate    = Calendar.current.date(from: comps) ?? presetDate
+        let cal  = Calendar.current
+        let hour = cal.component(.hour, from: presetDate)
+        let min  = cal.component(.minute, from: presetDate)
+        if hour != 0 || min != 0 {
+            // presetDate already carries a specific time (e.g. parsed from note text)
+            startDate = presetDate
+        } else {
+            var comps  = cal.dateComponents([.year, .month, .day], from: presetDate)
+            comps.hour = presetHour
+            comps.minute = 0
+            startDate = cal.date(from: comps) ?? presetDate
+        }
     }
 
     private func save() {
@@ -130,18 +174,25 @@ struct NewEventSheet: View {
                     title:    trimmed,
                     start:    startDate,
                     duration: duration,
+                    calendar: selectedCalendar,
                     notes:    notes.isEmpty ? nil : notes
                 )
             } else {
                 try eventKit.createReminder(
-                    title:   trimmed,
-                    dueDate: startDate,
-                    notes:   notes.isEmpty ? nil : notes
+                    title:    trimmed,
+                    dueDate:  startDate,
+                    calendar: selectedCalendar,
+                    notes:    notes.isEmpty ? nil : notes
                 )
             }
             // Refresh cache
             eventKit.fetchEvents(for: startDate)
             Task { await eventKit.fetchReminders() }
+            // 패널 플래시 피드백 알림
+            NotificationCenter.default.post(
+                name: .noCalItemAdded,
+                object: itemType == .event ? "event" : "reminder"
+            )
             dismiss()
         } catch {
             self.error = error.localizedDescription

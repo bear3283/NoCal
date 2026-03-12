@@ -123,6 +123,19 @@ final class EventKitService {
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // MARK: Available Calendars / Lists
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// 사용 가능한 캘린더(이벤트용) 또는 미리알림 목록을 반환합니다.
+    func availableCalendars(for type: EKEntityType) -> [EKCalendar] {
+        switch type {
+        case .event:    return store.calendars(for: .event).sorted { $0.title < $1.title }
+        case .reminder: return store.calendars(for: .reminder).sorted { $0.title < $1.title }
+        @unknown default: return []
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // MARK: Create
     // ─────────────────────────────────────────────────────────────────────
     @discardableResult
@@ -130,36 +143,91 @@ final class EventKitService {
         title:    String,
         start:    Date,
         duration: TimeInterval = 3600,
+        isAllDay: Bool         = false,
+        calendar: EKCalendar?  = nil,
         notes:    String?      = nil
     ) throws -> EKEvent {
         guard hasCalendarAccess else { throw EKError.accessDenied }
         let event        = EKEvent(eventStore: store)
         event.title      = title
         event.startDate  = start
-        event.endDate    = start.addingTimeInterval(duration)
+        event.endDate    = isAllDay ? start : start.addingTimeInterval(duration)
+        event.isAllDay   = isAllDay
         event.notes      = notes
-        event.calendar   = store.defaultCalendarForNewEvents
+        event.calendar   = calendar ?? store.defaultCalendarForNewEvents
         try store.save(event, span: .thisEvent, commit: true)
         return event
     }
 
     @discardableResult
     func createReminder(
-        title:   String,
-        dueDate: Date?   = nil,
-        notes:   String? = nil
+        title:    String,
+        dueDate:  Date?        = nil,
+        priority: Int          = 0,
+        calendar: EKCalendar?  = nil,
+        notes:    String?      = nil
     ) throws -> EKReminder {
         guard hasRemindersAccess else { throw EKError.accessDenied }
         let reminder        = EKReminder(eventStore: store)
         reminder.title      = title
         reminder.notes      = notes
-        reminder.calendar   = store.defaultCalendarForNewReminders()
+        reminder.priority   = priority
+        reminder.calendar   = calendar ?? store.defaultCalendarForNewReminders()
         if let due = dueDate {
             reminder.dueDateComponents = Calendar.current
                 .dateComponents([.year, .month, .day, .hour, .minute], from: due)
         }
         try store.save(reminder, commit: true)
         return reminder
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // MARK: Update (편집)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// 기존 EKEvent를 수정합니다.
+    func updateEvent(
+        _ event:  EKEvent,
+        title:    String,
+        start:    Date,
+        end:      Date,
+        isAllDay: Bool        = false,
+        calendar: EKCalendar? = nil,
+        notes:    String?     = nil
+    ) throws {
+        guard hasCalendarAccess else { throw EKError.accessDenied }
+        event.title     = title
+        event.startDate = start
+        event.endDate   = end
+        event.isAllDay  = isAllDay
+        event.notes     = notes
+        if let cal = calendar { event.calendar = cal }
+        try store.save(event, span: .thisEvent, commit: true)
+        fetchEvents(for: start)
+    }
+
+    /// 기존 EKReminder를 수정합니다.
+    func updateReminder(
+        _ reminder: EKReminder,
+        title:    String,
+        dueDate:  Date?,
+        priority: Int         = 0,
+        calendar: EKCalendar? = nil,
+        notes:    String?     = nil
+    ) throws {
+        guard hasRemindersAccess else { throw EKError.accessDenied }
+        reminder.title    = title
+        reminder.priority = priority
+        reminder.notes    = notes
+        if let cal = calendar { reminder.calendar = cal }
+        if let due = dueDate {
+            reminder.dueDateComponents = Calendar.current
+                .dateComponents([.year, .month, .day, .hour, .minute], from: due)
+        } else {
+            reminder.dueDateComponents = nil
+        }
+        try store.save(reminder, commit: true)
+        Task { await fetchReminders() }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -285,10 +353,14 @@ extension EKEvent {
     }
 
     var timeRangeString: String {
-        let fmt = DateFormatter()
-        fmt.dateFormat = "h:mm"
-        return "\(fmt.string(from: startDate))–\(fmt.string(from: endDate))"
+        "\(Self.timeFmt.string(from: startDate))–\(Self.timeFmt.string(from: endDate))"
     }
+
+    private static let timeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm"
+        return f
+    }()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

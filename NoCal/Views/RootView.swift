@@ -83,7 +83,7 @@ struct RootView: View {
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // MARK: macOS — 3-column layout
+    // MARK: macOS — 2-column layout + DashboardView
     // ─────────────────────────────────────────────────────────────────────
     #if os(macOS)
     @ViewBuilder
@@ -97,24 +97,9 @@ struct RootView: View {
                     ideal: NoCalTheme.sidebarIdealWidth,
                     max: NoCalTheme.sidebarMaxWidth
                 )
-        } content: {
-            NoteListView()
-                .navigationSplitViewColumnWidth(
-                    min: NoCalTheme.listMinWidth,
-                    ideal: NoCalTheme.listIdealWidth,
-                    max: NoCalTheme.listMaxWidth
-                )
         } detail: {
-            HStack(spacing: 0) {
-                NoteEditorView()
-
-                if appViewModel.showTimeline {
-                    Divider()
-                    TimelineView()
-                        .frame(width: NoCalTheme.timelineWidth)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            DashboardView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
     #endif
