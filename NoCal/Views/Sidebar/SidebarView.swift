@@ -14,6 +14,8 @@ struct SidebarView: View {
     @Query(sort: \Folder.sortOrder) private var folders: [Folder]
     @Query(sort: \Note.modifiedAt, order: .reverse) private var allNotes: [Note]
 
+    private var eventKit = EventKitService.shared
+
     @State private var showAddFolder  = false
     @State private var newFolderName  = ""
     @State private var expandedTags   = true
@@ -38,7 +40,7 @@ struct SidebarView: View {
     }
 
     var reminderDates: Set<Date> {
-        Set(EventKitService.shared.incompleteReminders.compactMap { $0.dueDate })
+        Set(eventKit.incompleteReminders.compactMap { $0.dueDate })
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -52,6 +54,7 @@ struct SidebarView: View {
             foldersSection
             tagsSection
             calendarSection
+            remindersSection
         }
         .listStyle(.sidebar)
         .navigationTitle("nocal")
@@ -130,6 +133,23 @@ struct SidebarView: View {
         }
     }
 
+    @ViewBuilder private var remindersSection: some View {
+        let reminders = eventKit.incompleteReminders
+        if eventKit.hasRemindersAccess && !reminders.isEmpty {
+            Section {
+                ForEach(reminders.prefix(8), id: \.calendarItemIdentifier) { reminder in
+                    SidebarReminderRow(reminder: reminder, eventKit: eventKit)
+                }
+                if reminders.count > 8 {
+                    Text("+ \(reminders.count - 8)개 더")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                }
+            } header: { Text("미리알림").sidebarHeader() }
+        }
+    }
+
     @ViewBuilder private var calendarSection: some View {
         Section {
             MiniCalendarView(
@@ -137,7 +157,6 @@ struct SidebarView: View {
                     get: { appViewModel.selectedDate },
                     set: { date in
                         appViewModel.selectedDate = date
-                        // 해당 날짜의 daily note가 있으면 선택, 없으면 allNotes로 이동
                         if let existing = allNotes.first(where: {
                             $0.isDaily && Calendar.current.isDate(
                                 $0.dailyDate ?? .distantPast, inSameDayAs: date)
@@ -153,7 +172,32 @@ struct SidebarView: View {
                 reminderDates: reminderDates
             )
             .padding(.vertical, 4)
+
+            // ── 선택한 날의 캘린더 일정 ─────────────────────────────────
+            if eventKit.hasCalendarAccess {
+                let dayEvents = eventKit.todayEvents   // refresh(for:) 로 최신 유지
+                if dayEvents.isEmpty {
+                    Text("일정 없음")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 2)
+                } else {
+                    ForEach(dayEvents.prefix(5), id: \.eventIdentifier) { event in
+                        SidebarEventRow(event: event)
+                    }
+                    if dayEvents.count > 5 {
+                        Text("+ \(dayEvents.count - 5)개 더")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 4)
+                    }
+                }
+            }
         } header: { Text("캘린더").sidebarHeader() }
+        .onChange(of: appViewModel.selectedDate) { _, date in
+            Task { await eventKit.refresh(for: date) }
+        }
+        .task { await eventKit.refresh(for: appViewModel.selectedDate) }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -197,6 +241,75 @@ struct SidebarView: View {
     private func deleteFolders(at offsets: IndexSet) {
         offsets.map { folders[$0] }.forEach { modelContext.delete($0) }
         try? modelContext.save()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARK: - SidebarEventRow
+// ─────────────────────────────────────────────────────────────────────────────
+private struct SidebarEventRow: View {
+    let event: EKEvent
+
+    private let timeFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    var body: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(event.calendarColor)
+                .frame(width: 3)
+                .padding(.vertical, 2)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(event.title ?? "일정")
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text("\(timeFmt.string(from: event.startDate)) – \(timeFmt.string(from: event.endDate))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARK: - SidebarReminderRow
+// ─────────────────────────────────────────────────────────────────────────────
+private struct SidebarReminderRow: View {
+    let reminder: EKReminder
+    let eventKit: EventKitService
+
+    var body: some View {
+        Button {
+            try? eventKit.toggleReminder(reminder)
+        } label: {
+            HStack(spacing: NoCalTheme.sp8) {
+                Image(systemName: "circle")
+                    .font(.system(size: 15, weight: .light))
+                    .foregroundStyle(Color.noCalReminder)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(reminder.title ?? "미리알림")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    if let due = reminder.dueDate {
+                        Text(due, style: .date)
+                            .font(.caption2)
+                            .foregroundStyle(
+                                reminder.isOverdue ? Color.red.opacity(0.8) : .secondary
+                            )
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

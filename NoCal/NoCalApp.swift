@@ -16,6 +16,7 @@
 import SwiftUI
 import SwiftData
 import AppIntents
+import EventKit
 
 @main
 struct NoCalApp: App {
@@ -329,9 +330,14 @@ private struct CloudSyncSettingsTab: View {
     }
 }
 
-private struct CalendarSettingsTab: View {
+struct CalendarSettingsTab: View {
     let onDismiss: () -> Void
-    private var s = EventKitService.shared
+    private var s: EventKitService
+
+    init(onDismiss: @escaping () -> Void) {
+        self.onDismiss = onDismiss
+        self.s = EventKitService.shared
+    }
 
     var body: some View {
         Form {
