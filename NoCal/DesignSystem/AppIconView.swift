@@ -93,12 +93,20 @@ struct AppIconView: View {
             // 2. Dark header fill (clipped by card's rounded corners)
             VStack(spacing: 0) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.92))
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(hue: 0.658, saturation: 0.84, brightness: 0.44),
+                                Color(hue: 0.678, saturation: 0.94, brightness: 0.27),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                     .frame(height: headerH)
                     .overlay(alignment: .bottom) {
-                        // Separator under white header
                         Rectangle()
-                            .fill(Color(hue: 0.670, saturation: 0.30, brightness: 0.70).opacity(0.25))
+                            .fill(Color.white.opacity(0.14))
                             .frame(height: max(0.5, size * 0.002))
                     }
                 Spacer(minLength: 0)
@@ -154,13 +162,9 @@ struct AppIconView: View {
 
     // ── Binding ring ─────────────────────────────────────────────────────
     private var bindingRing: some View {
-        ZStack {
-            Circle()
-                .fill(Color(hue: 0.675, saturation: 0.82, brightness: 0.40))
-            Circle()
-                .strokeBorder(Color.white.opacity(0.55), lineWidth: max(1.5, size * 0.007))
-        }
-        .frame(width: ringD, height: ringD)
+        Circle()
+            .fill(Color.white)
+            .frame(width: ringD, height: ringD)
     }
 
     // ── Date grid: 5 columns × 3 rows, row 1 col 2 = today ───────────────
