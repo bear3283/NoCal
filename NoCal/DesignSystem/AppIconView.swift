@@ -1,16 +1,21 @@
 /// AppIconView.swift
-/// NoCal 앱 아이콘 — 글래스모피즘 + 인디고 단색 (v2 단순화)
+/// NoCal 앱 아이콘 — 캘린더 카드 v5
 ///
 /// 디자인:
 ///   배경: 딥 인디고 그라디언트
 ///   글로우: 우상단 화이트 방사형 광원
-///   글래스 카드: 화이트 12%, 그라디언트 테두리 (틸트 없음, 정중앙)
-///   심볼:
-///     ① 캘린더 Today 원 (강조 서클 + 외곽 헤일로 링)
-///     ─ 구분선
-///     ○ ─────────  (TODO 줄 × 3, 동일 길이, 왼쪽 미리알림 원형 불릿)
-///     ○ ─────────
-///     ○ ─────────
+///   캘린더 카드 (글래스 전체가 캘린더):
+///     ┌─ 헤더 ─────────────────────────────────┐
+///     │  ○                                ○    │  ← 바인딩 링 (어두운 인디고 배경)
+///     ├─────────────────────────────────────── ┤
+///     │  · · · · ·                             │
+///     │  · · ◉ · ·   ← 오늘 (흰 원 강조)       │  ← 날짜 도트 그리드 5×3
+///     │  · · · · ·                             │
+///     ├─ 구분선 ──────────────────────────────  ┤
+///     │  ○ ─────────────────────────           │
+///     │  ○ ─────────────────────────           │  ← 미리알림 스트로크 × 3
+///     │  ○ ─────────────────────────           │
+///     └────────────────────────────────────────┘
 
 import SwiftUI
 
@@ -20,25 +25,31 @@ struct AppIconView: View {
     var size: CGFloat = 512
 
     // ── Derived metrics ──────────────────────────────────────────────────
-    private var iconRadius: CGFloat { size * 0.2237 }  // iOS 표준 비율
+    private var iconRadius: CGFloat { size * 0.2237 }
     private var cardRadius: CGFloat { size * 0.105  }
-    private var cardW:      CGFloat { size * 0.650  }
-    private var cardH:      CGFloat { size * 0.720  }
+    private var cardW:      CGFloat { size * 0.680  }
+    private var cardH:      CGFloat { size * 0.760  }
 
-    private var symbolW:    CGFloat { size * 0.500  }
-    private var bulletD:    CGFloat { size * 0.050  }  // TODO 불릿 지름
-    private var headerH:    CGFloat { size * 0.058  }  // 캘린더 헤더 높이
-    private var ringD:      CGFloat { size * 0.044  }  // 바인딩 링 지름
-    private var lineH:      CGFloat { size * 0.026  }  // 라인 높이
+    // Calendar header (dark section at top of card)
+    private var headerH:    CGFloat { size * 0.138  }
+    private var ringD:      CGFloat { size * 0.044  }
+
+    // Date grid
+    private var dotD:       CGFloat { size * 0.028  }   // regular date dot
+    private var todayD:     CGFloat { size * 0.054  }   // today circle diameter
+    private var colSp:      CGFloat { size * 0.046  }   // column spacing
+    private var rowSp:      CGFloat { size * 0.036  }   // row spacing
+
+    // Reminder rows
+    private var bulletD:    CGFloat { size * 0.046  }
+    private var lineH:      CGFloat { size * 0.024  }
 
     // ── Body ─────────────────────────────────────────────────────────────
     var body: some View {
         ZStack {
             backgroundLayer
             glowLayer
-            glassCard
-                .frame(width: cardW, height: cardH)   // 틸트 없음
-            symbolLayer
+            calendarCard
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: iconRadius, style: .continuous))
@@ -72,108 +83,143 @@ struct AppIconView: View {
             .offset(x: size * 0.24, y: -size * 0.24)
     }
 
-    // ── Glassmorphism card ────────────────────────────────────────────────
-    private var glassCard: some View {
-        RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
-            .fill(Color.white.opacity(0.11))
-            .overlay(alignment: .topLeading) {
-                // Inner sheen (light source reflection on glass surface)
-                RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+    // ── Calendar card — glass card + calendar content ─────────────────────
+    private var calendarCard: some View {
+        ZStack(alignment: .top) {
+            // 1. Glass base
+            RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+
+            // 2. Dark header fill (clipped by card's rounded corners)
+            VStack(spacing: 0) {
+                Rectangle()
                     .fill(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.16), Color.clear],
-                            startPoint: .topLeading,
-                            endPoint: .center
-                        )
-                    )
-                    .padding(max(1, size * 0.004))
-            }
-            .overlay(
-                // Glass edge (bright top-left → dim bottom-right)
-                RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
                             colors: [
-                                Color.white.opacity(0.52),
-                                Color.white.opacity(0.20),
-                                Color.white.opacity(0.04),
+                                Color(hue: 0.658, saturation: 0.84, brightness: 0.44),
+                                Color(hue: 0.678, saturation: 0.94, brightness: 0.27),
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
-                        ),
-                        lineWidth: max(1, size * 0.005)
+                        )
                     )
-            )
-    }
-
-    // ── Symbol ───────────────────────────────────────────────────────────
-    private var symbolLayer: some View {
-        VStack(spacing: size * 0.050) {
-            calendarHeader
-            dividerLine
-            todoLines
-        }
-        .frame(width: symbolW)
-    }
-
-    // MARK: Calendar header — binding rings + header bar (flip-calendar style)
-    private var calendarHeader: some View {
-        ZStack(alignment: .top) {
-            // Header bar (below rings)
-            RoundedRectangle(cornerRadius: size * 0.018, style: .continuous)
-                .fill(Color.white.opacity(0.88))
-                .frame(height: headerH)
-                .padding(.top, ringD * 0.55)   // bar starts below ring center
-
-            // Binding rings row (overlaps top of bar)
-            HStack {
-                bindingRing
-                Spacer()
-                bindingRing
+                    .frame(height: headerH)
+                    .overlay(alignment: .bottom) {
+                        // Subtle separator under header
+                        Rectangle()
+                            .fill(Color.white.opacity(0.14))
+                            .frame(height: max(0.5, size * 0.002))
+                    }
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, symbolW * 0.10)
+
+            // 3. Glass border
+            RoundedRectangle(cornerRadius: cardRadius, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.50),
+                            Color.white.opacity(0.18),
+                            Color.white.opacity(0.04),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: max(1, size * 0.005)
+                )
+
+            // 4. Card content
+            VStack(spacing: 0) {
+                // Header: binding rings
+                HStack {
+                    bindingRing
+                    Spacer()
+                    bindingRing
+                }
+                .padding(.horizontal, cardW * 0.13)
+                .frame(height: headerH)
+
+                // Date grid
+                dateGrid
+                    .padding(.top, size * 0.034)
+
+                // Divider
+                Capsule()
+                    .fill(Color.white.opacity(0.20))
+                    .frame(height: max(1, size * 0.003))
+                    .padding(.top, size * 0.030)
+
+                // Reminder rows
+                reminderRows
+                    .padding(.top, size * 0.028)
+
+                Spacer(minLength: size * 0.032)
+            }
+            .padding(.horizontal, cardW * 0.11)
         }
+        .frame(width: cardW, height: cardH)
+        .clipShape(RoundedRectangle(cornerRadius: cardRadius, style: .continuous))
     }
 
+    // ── Binding ring ─────────────────────────────────────────────────────
     private var bindingRing: some View {
         ZStack {
-            // Dark fill — punches through the header bar visually
             Circle()
-                .fill(Color(hue: 0.675, saturation: 0.88, brightness: 0.34))
-            // White ring stroke
+                .fill(Color(hue: 0.675, saturation: 0.90, brightness: 0.22))
             Circle()
-                .strokeBorder(Color.white.opacity(0.75), lineWidth: max(1.5, size * 0.007))
+                .strokeBorder(Color.white.opacity(0.65), lineWidth: max(1.5, size * 0.007))
         }
         .frame(width: ringD, height: ringD)
     }
 
-    // MARK: Divider
-    private var dividerLine: some View {
-        Capsule()
-            .fill(Color.white.opacity(0.18))
-            .frame(maxWidth: .infinity)
-            .frame(height: max(1, size * 0.003))
-    }
-
-    // MARK: TODO lines — circle bullet + equal-width capsule
-    private var todoLines: some View {
-        VStack(alignment: .leading, spacing: size * 0.044) {
-            todoRow
-            todoRow
-            todoRow
+    // ── Date grid: 5 columns × 3 rows, row 1 col 2 = today ───────────────
+    private var dateGrid: some View {
+        VStack(spacing: rowSp) {
+            ForEach(0..<3, id: \.self) { row in
+                HStack(spacing: colSp) {
+                    ForEach(0..<5, id: \.self) { col in
+                        dateDot(row: row, col: col)
+                    }
+                }
+            }
         }
     }
 
-    private var todoRow: some View {
-        HStack(spacing: size * 0.026) {
-            // Reminder-style ring bullet (like iOS Reminders circle)
-            Circle()
-                .strokeBorder(Color.white.opacity(0.82), lineWidth: max(1, size * 0.008))
-                .frame(width: bulletD, height: bulletD)
+    private func dateDot(row: Int, col: Int) -> some View {
+        let isToday = (row == 1 && col == 2)
+        // Past row slightly dimmer; future rows slightly brighter
+        let opacity: Double = row == 0 ? 0.35 : 0.52
+        return ZStack {
+            if isToday {
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: todayD, height: todayD)
+            } else {
+                Circle()
+                    .fill(Color.white.opacity(opacity))
+                    .frame(width: dotD, height: dotD)
+            }
+        }
+        // Fixed cell keeps all columns aligned regardless of dot size
+        .frame(width: todayD, height: todayD)
+    }
 
-            // Line — full remaining width (all 3 rows same length)
+    // ── Reminder rows ─────────────────────────────────────────────────────
+    private var reminderRows: some View {
+        VStack(alignment: .leading, spacing: size * 0.036) {
+            reminderRow
+            reminderRow
+            reminderRow
+        }
+    }
+
+    private var reminderRow: some View {
+        HStack(spacing: size * 0.022) {
+            Circle()
+                .strokeBorder(Color.white.opacity(0.80), lineWidth: max(1, size * 0.008))
+                .frame(width: bulletD, height: bulletD)
             Capsule()
-                .fill(Color.white.opacity(0.78))
+                .fill(Color.white.opacity(0.72))
                 .frame(height: lineH)
                 .frame(maxWidth: .infinity)
         }
