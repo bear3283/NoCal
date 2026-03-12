@@ -182,20 +182,19 @@ struct AppIconView: View {
 
     private func dateDot(row: Int, col: Int) -> some View {
         let isToday = (row == 1 && col == 3)
-        // Past row slightly dimmer; future rows slightly brighter
         let opacity: Double = row == 0 ? 0.35 : 0.52
         return ZStack {
+            // Regular dot (same size for all, including today)
+            Circle()
+                .fill(Color.white.opacity(isToday ? 1.0 : opacity))
+                .frame(width: dotD, height: dotD)
+            // Today: slightly larger ring overlapping the dot
             if isToday {
                 Circle()
-                    .fill(Color.white)
+                    .strokeBorder(Color.white.opacity(0.90), lineWidth: max(1, size * 0.006))
                     .frame(width: todayD, height: todayD)
-            } else {
-                Circle()
-                    .fill(Color.white.opacity(opacity))
-                    .frame(width: dotD, height: dotD)
             }
         }
-        // Fixed cell keeps all columns aligned regardless of dot size
         .frame(width: todayD, height: todayD)
     }
 
