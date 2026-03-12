@@ -111,12 +111,12 @@ struct NoCalCommands: Commands {
             Button("다음 날") {
                 NotificationCenter.default.post(name: .noCalNextDay, object: nil)
             }
-            .keyboardShortcut(.rightArrow, modifiers: .command)
+            .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
 
             Button("이전 날") {
                 NotificationCenter.default.post(name: .noCalPreviousDay, object: nil)
             }
-            .keyboardShortcut(.leftArrow, modifiers: .command)
+            .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
         }
 
         // ── Format 메뉴 ──────────────────────────────────────────────────────
